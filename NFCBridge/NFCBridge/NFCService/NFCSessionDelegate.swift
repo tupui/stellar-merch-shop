@@ -1,6 +1,6 @@
 /**
- * NFCISO7816TagReaderSession Delegate
- * Handles NFC tag detection and communication
+ * NFCTagReaderSession Delegate
+ * Handles NFC tag detection and communication for ISO 7816 tags (SECORA chips)
  */
 
 import Foundation
@@ -12,7 +12,7 @@ protocol NFCServiceDelegate: AnyObject {
     func nfcService(_ service: NFCService, didFailWithError error: Error)
 }
 
-class NFCSessionDelegate: NSObject, NFCISO7816TagReaderSessionDelegate {
+class NFCSessionDelegate: NSObject, NFCTagReaderSessionDelegate {
     weak var service: NFCService?
     
     init(service: NFCService) {
@@ -20,13 +20,23 @@ class NFCSessionDelegate: NSObject, NFCISO7816TagReaderSessionDelegate {
         super.init()
     }
     
-    func tagReaderSession(_ session: NFCISO7816TagReaderSession, didDetect tags: [NFCISO7816Tag]) {
-        guard let tag = tags.first else {
+    func tagReaderSessionDidBecomeActive(_ session: NFCTagReaderSession) {
+        // Session became active - can display UI if needed
+    }
+    
+    func tagReaderSession(_ session: NFCTagReaderSession, didDetect tags: [NFCTag]) {
+        guard let firstTag = tags.first else {
             session.invalidate(errorMessage: "No tag detected")
             return
         }
         
-            session.connect(to: tag) { [weak self] (error: Error?) in
+        // Only handle ISO 7816 tags (SECORA chips)
+        guard case .iso7816(let iso7816Tag) = firstTag else {
+            session.invalidate(errorMessage: "Unsupported tag type. SECORA chips use ISO 7816.")
+            return
+        }
+        
+        session.connect(to: firstTag) { [weak self] (error: Error?) in
             guard let self = self, let service = self.service else { return }
             
             if let error = error {
@@ -35,18 +45,13 @@ class NFCSessionDelegate: NSObject, NFCISO7816TagReaderSessionDelegate {
                 return
             }
             
-            // Tag connected, notify service
-            service.tagConnected = tag
+            // Tag connected, notify service with ISO 7816 tag
+            service.tagConnected = iso7816Tag
         }
     }
     
-    func tagReaderSession(_ session: NFCISO7816TagReaderSession, didInvalidateWithError error: Error) {
+    func tagReaderSession(_ session: NFCTagReaderSession, didInvalidateWithError error: Error) {
         // Session invalidated (user cancelled, error, etc.)
         service?.sessionInvalidated(error: error)
-    }
-    
-    // This method is called when user interaction is required
-    func tagReaderSessionDidBecomeActive(_ session: NFCISO7816TagReaderSession) {
-        // Session became active - can display UI if needed
     }
 }

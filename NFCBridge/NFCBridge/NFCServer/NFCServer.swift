@@ -15,7 +15,7 @@ protocol NFCServerDelegate: AnyObject {
 
 class NFCServer {
     private var listener: NWListener?
-    private var connections: [NWConnection: WebSocketHandler] = [:]
+    private var connections: [ObjectIdentifier: (connection: NWConnection, handler: WebSocketHandler)] = [:]
     private let nfcService: NFCService
     private let protocolAdapter: ProtocolAdapter
     private let messageHandler: MessageHandler
@@ -31,14 +31,9 @@ class NFCServer {
      * Start WebSocket server on localhost:8080
      */
     func start() {
-        let parameters = NWParameters(tcp: NWProtocolTCP.Options())
+        // Start from default TCP parameters
+        let parameters = NWParameters.tcp
         parameters.allowLocalEndpointReuse = true
-        
-        // Allow multiple connections
-        let options = NWProtocolTCP.Options()
-        options.enableKeepalive = true
-        options.keepaliveIdle = 2
-        parameters.defaultProtocolStack.applicationProtocols.insert(options, at: 0)
         
         let port = NWEndpoint.Port(rawValue: 8080)!
         listener = try? NWListener(using: parameters, on: port)
@@ -71,7 +66,7 @@ class NFCServer {
      */
     func stop() {
         listener?.cancel()
-        connections.keys.forEach { $0.cancel() }
+        connections.values.forEach { $0.connection.cancel() }
         connections.removeAll()
     }
     
@@ -79,8 +74,9 @@ class NFCServer {
      * Handle new client connection
      */
     private func handleConnection(_ connection: NWConnection) {
+        let connectionId = ObjectIdentifier(connection)
         let wsHandler = WebSocketHandler(connection: connection)
-        connections[connection] = wsHandler
+        connections[connectionId] = (connection: connection, handler: wsHandler)
         delegate?.clientDidConnect()
         
         connection.stateUpdateHandler = { [weak self] state in
@@ -89,11 +85,11 @@ class NFCServer {
                 self?.receiveHandshake(on: connection)
             case .failed(let error):
                 print("Connection failed: \(error)")
-                self?.connections.removeValue(forKey: connection)
+                self?.connections.removeValue(forKey: connectionId)
                 connection.cancel()
                 self?.delegate?.clientDidDisconnect()
             case .cancelled:
-                self?.connections.removeValue(forKey: connection)
+                self?.connections.removeValue(forKey: connectionId)
                 self?.delegate?.clientDidDisconnect()
             default:
                 break
@@ -107,6 +103,7 @@ class NFCServer {
      * Receive WebSocket handshake
      */
     private func receiveHandshake(on connection: NWConnection) {
+        let connectionId = ObjectIdentifier(connection)
         connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, context, isComplete, error in
             guard let self = self else { return }
             
@@ -117,10 +114,12 @@ class NFCServer {
             
             if let data = data, !data.isEmpty {
                 guard let httpRequest = String(data: data, encoding: .utf8),
-                      let wsHandler = self.connections[connection] else {
+                      let connectionInfo = self.connections[connectionId] else {
                     connection.cancel()
                     return
                 }
+                
+                let wsHandler = connectionInfo.handler
                 
                 do {
                     let response = try wsHandler.handleHandshake(httpRequest)
@@ -166,12 +165,15 @@ class NFCServer {
      * Handle WebSocket message
      */
     private func handleWebSocketMessage(_ data: Data, on connection: NWConnection) {
-        guard let wsHandler = connections[connection],
-              wsHandler.isConnectionUpgraded() else {
+        let connectionId = ObjectIdentifier(connection)
+        guard let connectionInfo = connections[connectionId],
+              connectionInfo.handler.isConnectionUpgraded() else {
             // Connection not upgraded yet
             receiveMessage(on: connection)
             return
         }
+        
+        let wsHandler = connectionInfo.handler
         
         do {
             // Decode WebSocket frame

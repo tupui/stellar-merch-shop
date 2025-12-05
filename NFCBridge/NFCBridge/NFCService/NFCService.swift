@@ -9,7 +9,7 @@ import CoreNFC
 class NFCService {
     weak var delegate: NFCServiceDelegate?
     
-    private var session: NFCISO7816TagReaderSession?
+    private var session: NFCTagReaderSession?
     private var currentTag: NFCISO7816Tag?
     var tagConnected: NFCISO7816Tag? {
         get { currentTag }
@@ -26,17 +26,19 @@ class NFCService {
     
     /**
      * Start NFC session
+     * Uses NFCTagReaderSession with ISO 14443 polling for ISO 7816 tags (SECORA chips)
      */
     func startSession() {
         guard NFCNDEFReaderSession.readingAvailable else {
-            delegate?.nfcService(self, didFailWithError: NFCError(.readerSessionUnsupportedFeature))
+            delegate?.nfcService(self, didFailWithError: NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "NFC not available on this device"]))
             return
         }
         
-        session = NFCISO7816TagReaderSession(
+        // Use NFCTagReaderSession with ISO 14443 polling for ISO 7816 tags
+        session = NFCTagReaderSession(
+            pollingOption: .iso14443,
             delegate: NFCSessionDelegate(service: self),
-            queue: DispatchQueue.global(qos: .userInitiated),
-            invalidateAfterFirstRead: false
+            queue: DispatchQueue.global(qos: .userInitiated)
         )
         
         session?.alertMessage = "Hold your device near the NFC chip"
@@ -90,7 +92,7 @@ class NFCService {
      */
     private func executeAPDU(_ apdu: Data, completion: @escaping (Result<Data, Error>) -> Void) {
         guard let tag = currentTag else {
-            completion(.failure(NFCError(.tagConnectionLost)))
+            completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Tag connection lost"])))
             return
         }
         
@@ -101,8 +103,13 @@ class NFCService {
      * Execute APDU on specific tag
      */
     private func executeAPDUOnTag(_ tag: NFCISO7816Tag, apdu: Data, completion: @escaping (Result<Data, Error>) -> Void) {
+        guard let apduCommand = NFCISO7816APDU(data: apdu) else {
+            completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid parameter"])))
+            return
+        }
+        
         tag.sendCommand(
-            apdu: apdu,
+            apdu: apduCommand,
             completionHandler: { (response: Data, sw1: UInt8, sw2: UInt8, error: Error?) in
                 if let error = error {
                     completion(.failure(error))
@@ -131,7 +138,7 @@ class NFCService {
             case .success(let selectResponse):
                 guard let selectAPDU = APDUResponse(rawResponse: selectResponse),
                       selectAPDU.isSuccess else {
-                    completion(.failure(NFCError(.tagCommandApplicationError)))
+                    completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid parameter"])))
                     return
                 }
                 
@@ -143,7 +150,7 @@ class NFCService {
                         guard let keyAPDU = APDUResponse(rawResponse: keyResponse),
                               keyAPDU.isSuccess,
                               let publicKey = APDUHandler.parsePublicKey(from: keyAPDU.data) else {
-                            completion(.failure(NFCError(.tagResponseError)))
+                            completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid parameter"])))
                             return
                         }
                         completion(.success(publicKey))
@@ -171,7 +178,7 @@ class NFCService {
             case .success(let selectResponse):
                 guard let selectAPDU = APDUResponse(rawResponse: selectResponse),
                       selectAPDU.isSuccess else {
-                    completion(.failure(NFCError(.tagCommandApplicationError)))
+                    completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid parameter"])))
                     return
                 }
                 
@@ -183,7 +190,7 @@ class NFCService {
                         guard let signAPDU = APDUResponse(rawResponse: signResponse),
                               signAPDU.isSuccess,
                               let signature = APDUHandler.parseSignature(from: signAPDU.data) else {
-                            completion(.failure(NFCError(.tagResponseError)))
+                            completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid parameter"])))
                             return
                         }
                         completion(.success((r: signature.r, s: signature.s, recoveryId: signature.recoveryId)))

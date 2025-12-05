@@ -58,13 +58,13 @@ class ProtocolAdapter {
             
         case "sign":
             guard let messageDigestHex = request.data?.messageDigest else {
-                completion(createErrorResponse("Missing messageDigest in sign request"))
+                completion(self.createErrorResponse("Missing messageDigest in sign request"))
                 return
             }
             handleSignRequest(messageDigestHex: messageDigestHex, completion: completion)
             
         default:
-            completion(createErrorResponse("Unknown request type: \(request.type)"))
+            completion(self.createErrorResponse("Unknown request type: \(request.type)"))
         }
     }
     
@@ -72,9 +72,6 @@ class ProtocolAdapter {
      * Handle status request
      */
     private func handleStatusRequest(completion: @escaping (WebSocketResponse) -> Void) {
-        // For status check, we don't need to actually read the chip
-        // Just return that reader is connected (chip presence will be determined on actual operations)
-        // This avoids triggering NFC session unnecessarily
         completion(WebSocketResponse(
             type: "status",
             success: true,
@@ -85,7 +82,7 @@ class ProtocolAdapter {
                 v: nil,
                 recoveryId: nil,
                 readerConnected: true,
-                chipPresent: chipPresent, // Last known state
+                chipPresent: self.chipPresent,
                 readerName: "iOS Core NFC"
             ),
             error: nil
@@ -99,7 +96,7 @@ class ProtocolAdapter {
         nfcService.readPublicKey { result in
             switch result {
             case .success(let publicKey):
-                chipPresent = true
+                self.chipPresent = true
                 completion(WebSocketResponse(
                     type: "pubkey",
                     success: true,
@@ -117,7 +114,7 @@ class ProtocolAdapter {
                 ))
                 
             case .failure(let error):
-                completion(createErrorResponse("Failed to read public key: \(error.localizedDescription)"))
+                completion(self.createErrorResponse("Failed to read public key: \(error.localizedDescription)"))
             }
         }
     }
@@ -130,7 +127,7 @@ class ProtocolAdapter {
         guard messageDigestHex.count == 64,
               let messageHash = hexStringToData(messageDigestHex),
               messageHash.count == 32 else {
-            completion(createErrorResponse("Invalid message digest (must be 32 bytes / 64 hex chars)"))
+            completion(self.createErrorResponse("Invalid message digest (must be 32 bytes / 64 hex chars)"))
             return
         }
         
@@ -154,7 +151,7 @@ class ProtocolAdapter {
                 ))
                 
             case .failure(let error):
-                completion(createErrorResponse("Failed to sign message: \(error.localizedDescription)"))
+                completion(self.createErrorResponse("Failed to sign message: \(error.localizedDescription)"))
             }
         }
     }
