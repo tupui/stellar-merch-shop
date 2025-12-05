@@ -194,6 +194,9 @@ class WebSocketNFCClient {
    * Request status update from server
    */
   requestStatus(): void {
+    if (!this.isConnected()) {
+      return; // Silently return if not connected
+    }
     this.send({ type: 'status' });
   }
 
@@ -491,6 +494,15 @@ export class NFCClient {
       chipPresent: false,
       readerName: null
     };
+  }
+
+  /**
+   * Request status update from server
+   */
+  requestStatus(): void {
+    if (this.wsClient && this.isConnected()) {
+      this.wsClient.requestStatus();
+    }
   }
 
   /**

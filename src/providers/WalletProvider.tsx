@@ -67,7 +67,6 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const networkForBalancesRef = useRef<string | undefined>(undefined);
   const addressRef = useRef<string | undefined>(undefined);
   const networkRef = useRef<string | undefined>(undefined);
-  const lastSetNetworkRef = useRef<string | undefined>(undefined);
 
   const nullify = () => {
     setAddress(undefined);
@@ -77,7 +76,6 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
     addressRef.current = undefined;
     networkRef.current = undefined;
     networkForBalancesRef.current = undefined;
-    lastSetNetworkRef.current = undefined;
     storage.setItem("walletId", "");
     storage.setItem("walletAddress", "");
     storage.setItem("walletNetwork", "");
@@ -157,7 +155,6 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
       addressRef.current = walletAddr;
       networkRef.current = normalizedStoredNetwork;
       lastNetworkRef.current = normalizedStoredNetwork;
-      lastSetNetworkRef.current = normalizedStoredNetwork;
       setNetworkPassphrase(passphrase);
     }
 
@@ -196,26 +193,17 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
           if (addressChanged) {
             setAddress(a.address);
           }
-          if (n.network) {
-            // Store normalized network value for comparison
+          if (networkChanged && n.network) {
+            // Only update if network actually changed
             const normalizedValue = n.network.toUpperCase();
-            
-            // Use functional setState to only update if value actually changed
-            setNetwork((prevNetwork) => {
-              const prevNormalized = (prevNetwork || "").toUpperCase();
-              if (normalizedValue !== prevNormalized) {
-                lastSetNetworkRef.current = normalizedValue;
-                return normalizedValue;
-              }
-              // Return previous value to prevent unnecessary re-render
-              return prevNetwork;
-            });
-            
+            setNetwork(normalizedValue);
             lastNetworkRef.current = normalizedValue;
           }
           if (passphraseChanged) setNetworkPassphrase(n.networkPassphrase);
-        } else if (n.network) {
-          // Update ref even if nothing changed, to track what we last saw
+        }
+        
+        // Always update tracking ref
+        if (n.network) {
           const normalizedValue = n.network.toUpperCase();
           lastNetworkRef.current = normalizedValue;
         }

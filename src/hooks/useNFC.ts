@@ -81,6 +81,8 @@ export function useNFC(): UseNFCReturn {
           break;
 
         case 'status':
+          // Trust the WebSocket status updates from the server
+          // The server knows the actual state of the chip, so update immediately
           setStatus(event.data as NFCStatus);
           break;
 
@@ -96,6 +98,7 @@ export function useNFC(): UseNFCReturn {
       nfcClient.removeListener(handleEvent);
     };
   }, [connected]);
+
 
   const connect = useCallback(async () => {
     try {
@@ -171,6 +174,7 @@ export function useNFC(): UseNFCReturn {
   const clearError = useCallback(() => {
     setError(null);
   }, []);
+
 
   return {
     connected,

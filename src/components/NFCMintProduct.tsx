@@ -18,7 +18,7 @@ type MintStep = 'idle' | 'reading' | 'signing' | 'recovering' | 'calling' | 'con
 
 export const NFCMintProduct = () => {
   const { address, updateBalances, signTransaction, network: walletNetwork, networkPassphrase: walletPassphrase } = useWallet();
-  const { connected, chipPresent, signing, signWithChip, readChip } = useNFC();
+  const { connected, signing, signWithChip, readChip, connect } = useNFC();
   const [minting, setMinting] = useState(false);
   const [mintStep, setMintStep] = useState<MintStep>('idle');
   const [result, setResult] = useState<{
@@ -34,37 +34,6 @@ export const NFCMintProduct = () => {
       <Text as="p" size="md">
         Connect wallet to mint NFTs with NFC chip
       </Text>
-    );
-  }
-
-  if (!connected) {
-    return (
-      <Box gap="sm">
-        <Text as="p" size="md">
-          NFC server not running
-        </Text>
-        <Text as="p" size="sm" style={{ color: "#666" }}>
-          Start the NFC server in a separate terminal:
-        </Text>
-        <Code size="md">bun run nfc-server</Code>
-        <Text as="p" size="sm" style={{ color: "#666", marginTop: "8px" }}>
-          Or start everything together:
-        </Text>
-        <Code size="md">bun run dev:with-nfc</Code>
-      </Box>
-    );
-  }
-
-  if (!chipPresent) {
-    return (
-      <Box gap="sm">
-        <Text as="p" size="md">
-          Place NFC chip on reader
-        </Text>
-        <Text as="p" size="sm" style={{ color: "#666" }}>
-          Position your Infineon NFC chip on the uTrust 4701F reader to continue
-        </Text>
-      </Box>
     );
   }
 
@@ -93,6 +62,12 @@ export const NFCMintProduct = () => {
     setResult(undefined);
 
     try {
+      // 0. Ensure we're connected to NFC server
+      if (!connected) {
+        setMintStep('reading');
+        await connect();
+      }
+      
       // 1. Read chip's public key (this will be the token ID)
       setMintStep('reading');
       const chipPublicKey = await readChip();
@@ -294,7 +269,7 @@ export const NFCMintProduct = () => {
 
           <Button
             type="submit"
-            disabled={!chipPresent || minting || signing}
+            disabled={minting || signing}
             isLoading={minting || signing}
             style={{ marginTop: "12px" }}
             variant="primary"
