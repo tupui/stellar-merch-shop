@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { nfcClient } from '../util/nfcClient';
 import type { SorobanSignature } from '../util/crypto';
+import type { KeyInfo } from '../util/nfcClient';
 
 export interface UseNFCReturn {
   // Connection state
@@ -15,6 +16,8 @@ export interface UseNFCReturn {
   signing: boolean;
   readingNDEF: boolean;
   writingNDEF: boolean;
+  generatingKey: boolean;
+  fetchingKey: boolean;
   
   // Methods
   connect: () => Promise<void>;
@@ -22,6 +25,8 @@ export interface UseNFCReturn {
   signWithChip: (messageDigest: Uint8Array) => Promise<SorobanSignature>;
   readNDEF: () => Promise<string | null>;
   writeNDEF: (url: string) => Promise<string>;
+  generateKey: () => Promise<KeyInfo>;
+  fetchKeyById: (keyId: number) => Promise<KeyInfo>;
 }
 
 export function useNFC(): UseNFCReturn {
@@ -29,6 +34,8 @@ export function useNFC(): UseNFCReturn {
   const [signing, setSigning] = useState(false);
   const [readingNDEF, setReadingNDEF] = useState(false);
   const [writingNDEF, setWritingNDEF] = useState(false);
+  const [generatingKey, setGeneratingKey] = useState(false);
+  const [fetchingKey, setFetchingKey] = useState(false);
 
   // Set up event listeners for connection state
   useEffect(() => {
@@ -106,16 +113,46 @@ export function useNFC(): UseNFCReturn {
     }
   }, [connected]);
 
+  const generateKey = useCallback(async (): Promise<KeyInfo> => {
+    if (!connected) {
+      throw new Error('Not connected to NFC server');
+    }
+
+    setGeneratingKey(true);
+    try {
+      return await nfcClient.generateKey();
+    } finally {
+      setGeneratingKey(false);
+    }
+  }, [connected]);
+
+  const fetchKeyById = useCallback(async (keyId: number): Promise<KeyInfo> => {
+    if (!connected) {
+      throw new Error('Not connected to NFC server');
+    }
+
+    setFetchingKey(true);
+    try {
+      return await nfcClient.fetchKeyById(keyId);
+    } finally {
+      setFetchingKey(false);
+    }
+  }, [connected]);
+
   return {
     connected,
     signing,
     readingNDEF,
     writingNDEF,
+    generatingKey,
+    fetchingKey,
     connect,
     readChip,
     signWithChip,
     readNDEF,
-    writeNDEF
+    writeNDEF,
+    generateKey,
+    fetchKeyById
   };
 }
 

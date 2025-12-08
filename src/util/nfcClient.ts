@@ -57,6 +57,13 @@ export class RecoveryIdError extends Error {
   }
 }
 
+export interface KeyInfo {
+  keyId: number;
+  publicKey: string;
+  globalCounter: number | null;
+  keyCounter: number | null;
+}
+
 interface WebSocketMessage {
   type: string;
   success?: boolean;
@@ -71,6 +78,9 @@ interface WebSocketMessage {
     readerName?: string | null;
     url?: string | null;
     message?: string;
+    keyId?: number;
+    globalCounter?: number | null;
+    keyCounter?: number | null;
     [key: string]: unknown;
   };
   error?: string;
@@ -460,6 +470,186 @@ class WebSocketNFCClient {
   }
 
   /**
+   * Generate a new keypair on the chip
+   * Returns key information including ID, public key, and counters
+   */
+  async generateKey(): Promise<KeyInfo> {
+    return new Promise((resolve, reject) => {
+      // Auto-connect if not connected
+      if (!this.isConnected()) {
+        console.log('generateKey: Not connected, attempting to connect...');
+        this.connect()
+          .then(() => {
+            this.performGenerateKey(resolve, reject);
+          })
+          .catch((err) => {
+            reject(new Error(`Failed to connect: ${err.message}`));
+          });
+        return;
+      }
+
+      if (!this.currentStatus.chipPresent) {
+        reject(new ChipNotPresentError());
+        return;
+      }
+      
+      this.performGenerateKey(resolve, reject);
+    });
+  }
+
+  private performGenerateKey(resolve: (value: KeyInfo) => void, reject: (reason?: unknown) => void) {
+    const handler = (event: NFCClientEvent) => {
+      if (event.type === 'error') {
+        this.removeListener(handler);
+        reject(new Error(event.data as string));
+      }
+    };
+
+    this.addListener(handler);
+
+    // Send generate key request
+    this.send({ type: 'generate-key' });
+
+    // Set up one-time message listener
+    const messageHandler = (event: MessageEvent) => {
+      try {
+        const message = JSON.parse(event.data as string) as WebSocketMessage;
+        if (message.type === 'key-generated' && message.success && message.data) {
+          this.removeListener(handler);
+          if (this.ws) {
+            this.ws.removeEventListener('message', messageHandler);
+          }
+          resolve({
+            keyId: message.data.keyId ?? 0,
+            publicKey: message.data.publicKey ?? '',
+            globalCounter: message.data.globalCounter ?? null,
+            keyCounter: message.data.keyCounter ?? null
+          });
+        } else if (message.type === 'error') {
+          this.removeListener(handler);
+          if (this.ws) {
+            this.ws.removeEventListener('message', messageHandler);
+          }
+          reject(new Error(message.error ?? 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('generateKey: Parse error:', error);
+        // Ignore parse errors
+      }
+    };
+
+    if (this.ws) {
+      this.ws.addEventListener('message', messageHandler);
+    }
+
+    // Timeout after 10 seconds
+    setTimeout(() => {
+      this.removeListener(handler);
+      if (this.ws) {
+        this.ws.removeEventListener('message', messageHandler);
+      }
+      reject(new Error('Timeout generating key'));
+    }, 10000);
+  }
+
+  /**
+   * Fetch key information by key ID (1-255)
+   */
+  async fetchKeyById(keyId: number): Promise<KeyInfo> {
+    if (!keyId || keyId < 1 || keyId > 255) {
+      throw new Error(`Invalid key ID: ${keyId} (must be 1-255)`);
+    }
+
+    return new Promise((resolve, reject) => {
+      // Auto-connect if not connected
+      if (!this.isConnected()) {
+        console.log('fetchKeyById: Not connected, attempting to connect...');
+        this.connect()
+          .then(() => {
+            if (!this.currentStatus.chipPresent) {
+              reject(new ChipNotPresentError());
+              return;
+            }
+            this.performFetchKey(keyId, resolve, reject);
+          })
+          .catch((err) => {
+            reject(new Error(`Failed to connect: ${err.message}`));
+          });
+        return;
+      }
+
+      if (!this.currentStatus.chipPresent) {
+        reject(new ChipNotPresentError());
+        return;
+      }
+      
+      this.performFetchKey(keyId, resolve, reject);
+    });
+  }
+
+  private performFetchKey(keyId: number, resolve: (value: KeyInfo) => void, reject: (reason?: unknown) => void) {
+    const handler = (event: NFCClientEvent) => {
+      if (event.type === 'error') {
+        this.removeListener(handler);
+        reject(new Error(event.data as string));
+      }
+    };
+
+    this.addListener(handler);
+
+    // Send fetch key request
+    this.send({ type: 'fetch-key', data: { keyId } });
+
+    // Set up one-time message listener
+    const messageHandler = (event: MessageEvent) => {
+      try {
+        const message = JSON.parse(event.data as string) as WebSocketMessage;
+        if (message.type === 'key-fetched') {
+          this.removeListener(handler);
+          if (this.ws) {
+            this.ws.removeEventListener('message', messageHandler);
+          }
+          
+          if (message.success && message.data) {
+            resolve({
+              keyId: message.data.keyId ?? keyId,
+              publicKey: message.data.publicKey ?? '',
+              globalCounter: message.data.globalCounter ?? null,
+              keyCounter: message.data.keyCounter ?? null
+            });
+          } else {
+            // Key not found or other failure
+            const errorMsg = (message as { message?: string }).message ?? message.error ?? 'Key not found';
+            reject(new Error(errorMsg));
+          }
+        } else if (message.type === 'error') {
+          this.removeListener(handler);
+          if (this.ws) {
+            this.ws.removeEventListener('message', messageHandler);
+          }
+          reject(new Error(message.error ?? 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('fetchKeyById: Parse error:', error);
+        // Ignore parse errors
+      }
+    };
+
+    if (this.ws) {
+      this.ws.addEventListener('message', messageHandler);
+    }
+
+    // Timeout after 10 seconds
+    setTimeout(() => {
+      this.removeListener(handler);
+      if (this.ws) {
+        this.ws.removeEventListener('message', messageHandler);
+      }
+      reject(new Error('Timeout fetching key'));
+    }, 10000);
+  }
+
+  /**
    * Write NDEF URL record to NFC chip
    */
   async writeNDEF(url: string): Promise<string> {
@@ -701,6 +891,26 @@ export class NFCClient {
   }
 
   /**
+   * Generate a new keypair on the chip
+   */
+  async generateKey(): Promise<KeyInfo> {
+    if (this.wsClient) {
+      return await this.wsClient.generateKey();
+    }
+    throw new Error('Not connected');
+  }
+
+  /**
+   * Fetch key information by key ID
+   */
+  async fetchKeyById(keyId: number): Promise<KeyInfo> {
+    if (this.wsClient) {
+      return await this.wsClient.fetchKeyById(keyId);
+    }
+    throw new Error('Not connected');
+  }
+
+  /**
    * Add event listener
    */
   addListener(listener: NFCClientEventListener): void {
@@ -735,5 +945,5 @@ export class NFCClient {
 }
 
 // Export singleton instance
-export const nfcClient = new NFCClient();
+export const nfcClient = new WebSocketNFCClient();
 

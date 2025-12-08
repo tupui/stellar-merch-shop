@@ -9,6 +9,7 @@ import { Button, Text, Code } from "@stellar/design-system";
 import { useWallet } from "../hooks/useWallet";
 import { useNFC } from "../hooks/useNFC";
 import { Box } from "./layout/Box";
+import { KeyManagementSection } from "./KeyManagementSection";
 import { bytesToHex, createSEP53Message, fetchCurrentLedger, determineRecoveryId } from "../util/crypto";
 import { getNetworkPassphrase, getHorizonUrl } from "../contracts/util";
 import { getContractClient } from "../contracts/stellar_merch_shop";
@@ -270,6 +271,9 @@ export const NFCMintProduct = () => {
         void handleMint();
       }}
     >
+      {/* Key Management Section */}
+      <KeyManagementSection />
+
       {/* NDEF Read Section */}
       <Box gap="sm" direction="column" style={{ marginBottom: "24px", padding: "16px", backgroundColor: "#f9f9f9", borderRadius: "8px", border: "1px solid #e0e0e0" }}>
         <Text as="p" size="md" weight="semi-bold" style={{ marginBottom: "8px" }}>
@@ -296,11 +300,19 @@ export const NFCMintProduct = () => {
                 <Code size="sm" style={{ wordBreak: "break-all", display: "block", padding: "8px", backgroundColor: "#f5f5f5", borderRadius: "4px" }}>
                   {ndefData}
                 </Code>
-                <Box as="a" href={ndefData} target="_blank" rel="noopener noreferrer" style={{ marginTop: "8px" }}>
-                  <Button type="button" variant="tertiary" size="sm">
-                    Open URL
-                  </Button>
-                </Box>
+                <Button
+                  type="button"
+                  variant="tertiary"
+                  size="sm"
+                  onClick={() => {
+                    if (ndefData) {
+                      window.open(ndefData, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                  style={{ marginTop: "8px" }}
+                >
+                  Open URL
+                </Button>
               </Box>
             ) : (
               <Text as="p" size="sm" style={{ color: "#666", fontStyle: "italic" }}>
