@@ -67,21 +67,54 @@ struct NFCConfig {
         return currentNetwork.rpcUrl
     }
     
-    /// Contract ID - configure this for your deployed contract
-    /// Set via UserDefaults or environment variable
+    /// Contract ID - reads from Info.plist based on current network
+    /// Can be overridden via UserDefaults for runtime changes
     static var contractId: String {
         // Check UserDefaults first (allows runtime override)
         if let stored = UserDefaults.standard.string(forKey: "contract_id"), !stored.isEmpty {
             return stored
         }
         
-        // Default contract ID for testnet
-        return "CD5GYISJJKTE5SMZHS4UVSBXM2A2DKUUOUHAK2SZ24IU5TOBRV54CPK3"
+        // Read from Info.plist based on current network
+        let plistKey: String
+        switch currentNetwork {
+        case .testnet:
+            plistKey = "StellarContractIdTestnet"
+        case .mainnet:
+            plistKey = "StellarContractIdMainnet"
+        case .futurenet:
+            // Futurenet uses testnet contract ID as fallback
+            plistKey = "StellarContractIdTestnet"
+        }
+        
+        if let contractId = Bundle.main.object(forInfoDictionaryKey: plistKey) as? String,
+           !contractId.isEmpty {
+            return contractId
+        }
+        
+        // Fallback defaults if Info.plist is not configured
+        switch currentNetwork {
+        case .testnet:
+            return "CD5GYISJJKTE5SMZHS4UVSBXM2A2DKUUOUHAK2SZ24IU5TOBRV54CPK3"
+        case .mainnet:
+            return ""
+        case .futurenet:
+            return "CD5GYISJJKTE5SMZHS4UVSBXM2A2DKUUOUHAK2SZ24IU5TOBRV54CPK3"
+        }
     }
     
-    /// Set contract ID
+    /// Set contract ID (runtime override via UserDefaults)
     static func setContractId(_ id: String) {
         UserDefaults.standard.set(id, forKey: "contract_id")
+    }
+    
+    /// Get contract ID for a specific network
+    static func contractId(for network: Network) -> String {
+        let originalNetwork = currentNetwork
+        currentNetwork = network
+        let id = contractId
+        currentNetwork = originalNetwork
+        return id
     }
 }
 

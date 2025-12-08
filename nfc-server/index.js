@@ -244,13 +244,18 @@ class NFCServer {
       
       // Parse DER-encoded signature to extract r and s
       const derHex = result.signature.toString('hex');
-      const { r, s } = parseDERSignature(derHex);
+      const { r, s, wasNormalized } = parseDERSignature(derHex);
       
-          const v = 1;
-          const recoveryId = 1;
+      // Adjust recovery_id when s is normalized
+      // When s is normalized (s -> n-s), recovery_id must be adjusted: recovery_id XOR 1
+      // Original recovery_id from blockchain2go is 1, so:
+      // - If s was normalized: recovery_id = 0 (1 XOR 1)
+      // - If s was not normalized: recovery_id = 1 (1 XOR 0)
+      const v = 1;
+      const recoveryId = wasNormalized ? 0 : 1;
 
       console.log(`signMessage: Sending signature response for key ID ${keyId}`);
-      console.log(`signMessage: Recovery ID: ${recoveryId}, Counters - global: ${result.globalCounter}, key: ${result.keyCounter}`);
+      console.log(`signMessage: s was normalized: ${wasNormalized}, Recovery ID: ${recoveryId}, Counters - global: ${result.globalCounter}, key: ${result.keyCounter}`);
 
           ws.send(JSON.stringify({
             type: 'signature',

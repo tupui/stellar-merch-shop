@@ -945,5 +945,5 @@ export class NFCClient {
 }
 
 // Export singleton instance
-export const nfcClient = new WebSocketNFCClient();
+export const nfcClient = new NFCClient();
 

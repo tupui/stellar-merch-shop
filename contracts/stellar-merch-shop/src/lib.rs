@@ -23,8 +23,9 @@ pub trait NFCtoNFTContract {
     /// Mint NFT using NFC chip signature.
     ///
     /// This function verifies that the provided signature was created by an Infineon
-    /// NFC chip by recovering the chip's public key. The recovered public key becomes
-    /// the unique token ID for the NFT.
+    /// NFC chip by recovering the chip's public key. The contract tries all recovery_ids
+    /// (0-3) to find the one that recovers to the provided token_id, ensuring the signature
+    /// is valid and matches the chip's public key.
     ///
     /// # Arguments
     ///
@@ -32,13 +33,13 @@ pub trait NFCtoNFTContract {
     /// * `to` - Account of the token's owner.
     /// * `message` - The message that was signed without the nonce.
     /// * `signature` - 64-byte ECDSA signature from NFC chip.
-    /// * `recovery_id` - Recovery ID (1-255) for public key recovery.
+    /// * `token_id` - The chip's public key (uncompressed SEC1 format).
     /// * `nonce` - A nonce to prevent replay attacks.
     ///
     /// # Returns
     ///
-    /// The recovered 65-byte public key, which becomes the token ID.
-    fn mint(e: &Env, to: Address, message: Bytes, signature: BytesN<64>, recovery_id: u32, nonce: u32) -> BytesN<65>;
+    /// The token_id (chip's public key) if signature is valid.
+    fn mint(e: &Env, to: Address, message: Bytes, signature: BytesN<64>, token_id: BytesN<65>, nonce: u32) -> BytesN<65>;
 
     /// Returns the number of tokens in `owner`'s account.
     ///

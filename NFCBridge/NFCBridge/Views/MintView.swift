@@ -166,39 +166,48 @@ struct MintView: View {
             let chipPublicKey = try await readChipPublicKey()
             print("MintView: Chip public key read successfully")
             
-            // 2. Fetch current ledger
+            // 2. Use nonce 0 (start of counter for this chip)
             currentStep = .creatingMessage
-            let currentLedger = try await appData.blockchainService.fetchCurrentLedger()
-            let validUntilLedger = currentLedger + 100
+            let nonce: UInt32 = 0
             
             // 3. Create SEP-53 message
             let sep53Result = try createSEP53Message(
                 contractId: NFCConfig.contractId,
                 functionName: "mint",
                 args: [wallet.address] as [Any],
-                validUntilLedger: validUntilLedger,
+                nonce: nonce,
                 networkPassphrase: NFCConfig.networkPassphrase
             )
             
-            // 4. Sign with chip (key index 1, recovery ID 1)
+            // 4. Sign with chip (key index 1)
             currentStep = .signing
             let signature = try await signWithChip(messageHash: sep53Result.messageHash)
             
-            // 5. Build transaction with signature from chip
+            // 5. Use chip's public key as token_id
+            // The contract will verify that the signature recovers to this token_id
+            // by trying all recovery_ids (0-3) internally
+            // Convert hex string to Data (65 bytes for uncompressed public key)
+            let tokenId = hexToBytes(chipPublicKey)
+            guard tokenId.count == 65 else {
+                throw NSError(domain: "MintView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid token_id length: expected 65 bytes, got \(tokenId.count)"])
+            }
+            
+            // 6. Build transaction with signature and token_id from chip
             currentStep = .buildingTransaction
             let transaction = try await appData.blockchainService.buildMintTransaction(
                 contractId: NFCConfig.contractId,
                 to: wallet.address,
                 message: sep53Result.message,
                 signature: signature.signatureBytes,
-                recoveryId: signature.recoveryId,
+                tokenId: tokenId,
+                nonce: nonce,
                 sourceAccount: wallet.address
             )
             
-            // 6. Sign transaction (external or local)
+            // 7. Sign transaction (external or local)
             let signedTx = try await signTransaction(transaction, wallet: wallet)
             
-            // 7. Submit transaction
+            // 8. Submit transaction
             currentStep = .submitting
             _ = try await appData.blockchainService.submitTransaction(signedTx)
             

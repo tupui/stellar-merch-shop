@@ -18,5 +18,11 @@
 		<string>processing</string>
 		<string>fetch</string>
 	</array>
+	<key>StellarContractIdLocal</key>
+	<string>CBLTP3BVYKJURO7RCLURKMFAGSBQHYYC36WVIZKQOIK25ZQMO4SVFL4W</string>
+	<key>StellarContractIdTestnet</key>
+	<string>CD5GYISJJKTE5SMZHS4UVSBXM2A2DKUUOUHAK2SZ24IU5TOBRV54CPK3</string>
+	<key>StellarContractIdMainnet</key>
+	<string></string>
 </dict>
 </plist>

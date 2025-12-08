@@ -33,4 +33,8 @@ pub enum NonFungibleTokenError {
     BaseUriMaxLenExceeded = 211,
     /// Indicates the royalty amount is higher than 10_000 (100%) basis points.
     InvalidRoyaltyAmount = 212,
+    /// Indicates access to unset metadata.
+    UnsetMetadata = 213,
+    /// Indicates the signature does not recover to the provided token_id.
+    InvalidSignature = 214,
 }

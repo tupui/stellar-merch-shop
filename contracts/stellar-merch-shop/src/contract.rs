@@ -39,7 +39,7 @@ impl NFCtoNFTContract for StellarMerchShop {
         to: Address,
         message: Bytes,
         signature: BytesN<64>,
-        recovery_id: u32,
+        token_id: BytesN<65>,
         nonce: u32,
     ) -> BytesN<65> {
         let mut builder: Bytes = Bytes::new(&e);
@@ -50,9 +50,22 @@ impl NFCtoNFTContract for StellarMerchShop {
         // This ensures Hash is constructed via a secure cryptographic function
         let message_hash = e.crypto().sha256(&builder);
 
-        // Recover the NFC chip's public key from the signature
-        // This proves the signature was created by the chip holding the private key
-        let token_id = e.crypto().secp256k1_recover(&message_hash, &signature, recovery_id);
+        // Verify the signature recovers to the provided token_id
+        // Try all recovery_ids (0-3) to find the one that recovers to token_id
+        // This ensures the signature was created by the chip holding the private key
+        let mut recovered_token_id: Option<BytesN<65>> = None;
+        for recovery_id in 0u32..=3u32 {
+            let recovered = e.crypto().secp256k1_recover(&message_hash, &signature, recovery_id);
+            if recovered == token_id {
+                recovered_token_id = Some(recovered);
+                break;
+            }
+        }
+        
+        // If no recovery_id worked, the signature is invalid
+        if recovered_token_id.is_none() {
+            panic_with_error!(&e, &errors::NonFungibleTokenError::InvalidSignature);
+        }
 
         let owner_key = NFTStorageKey::Owner(token_id.clone());
 
@@ -122,14 +135,14 @@ impl NFCtoNFTContract for StellarMerchShop {
             e.storage()
             .instance()
             .get(&NFTStorageKey::Name)
-            .unwrap()
+            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::UnsetMetadata))
     }
 
     fn symbol(e: &Env) -> String {
             e.storage()
             .instance()
             .get(&NFTStorageKey::Symbol)
-            .unwrap()
+            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::UnsetMetadata))
     }
 
     fn token_uri(e: &Env, token_id: BytesN<65>) -> String {

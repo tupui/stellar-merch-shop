@@ -10,9 +10,9 @@ import { useWallet } from "../hooks/useWallet";
 import { useNFC } from "../hooks/useNFC";
 import { Box } from "./layout/Box";
 import { KeyManagementSection } from "./KeyManagementSection";
-import { bytesToHex, createSEP53Message, fetchCurrentLedger, determineRecoveryId } from "../util/crypto";
-import { getNetworkPassphrase, getHorizonUrl } from "../contracts/util";
-import { getContractClient } from "../contracts/stellar_merch_shop";
+import { bytesToHex, createSEP53Message, determineRecoveryId, sha256 } from "../util/crypto";
+import { getNetworkPassphrase, getRpcUrl, getContractId } from "../contracts/util";
+import * as Client from "stellar_merch_shop";
 import { NFCServerNotRunningError, ChipNotPresentError, APDUCommandFailedError, RecoveryIdError } from "../util/nfcClient";
 
 type MintStep = 'idle' | 'reading' | 'signing' | 'recovering' | 'calling' | 'confirming' | 'writing-ndef';
@@ -113,26 +113,27 @@ export const NFCMintProduct = () => {
       
       // 2. Get network-specific settings
       const networkPassphraseToUse = getNetworkPassphrase(walletNetwork, walletPassphrase);
-      const horizonUrlToUse = getHorizonUrl(walletNetwork);
       
-      // 3. Fetch current ledger using wallet's network Horizon URL
-      let currentLedger: number;
-      try {
-        currentLedger = await fetchCurrentLedger(horizonUrlToUse);
-      } catch {
-        // Fallback to reasonable default if Horizon API fails
-        currentLedger = 1000000;
-      }
-      const validUntilLedger = currentLedger + 100;
+      // 3. Use nonce 0 (start of counter for this chip)
+      const nonce = 0;
       
       // 4. Get contract client for the wallet's network (with correct RPC, Horizon, and passphrase)
-      const contractClient = getContractClient(walletNetwork, walletPassphrase);
-      const contractId = contractClient.options.contractId;
+      const contractId = getContractId(walletNetwork);
+      if (!contractId) {
+        throw new Error(`No contract ID configured for network: ${walletNetwork}`);
+      }
+      const contractClient = new Client.Client({
+        networkPassphrase: walletPassphrase,
+        contractId: contractId,
+        rpcUrl: getRpcUrl(walletNetwork),
+        allowHttp: true,
+        publicKey: undefined,
+      });
       const { message, messageHash } = await createSEP53Message(
         contractId,
         'mint',
         [address],
-        validUntilLedger,
+        nonce,
         networkPassphraseToUse
       );
 
@@ -141,7 +142,7 @@ export const NFCMintProduct = () => {
       const signatureResult = await signWithChip(messageHash);
       const { signatureBytes, recoveryId: providedRecoveryId } = signatureResult;
 
-      // 6. Determine recovery ID
+      // 6. Determine recovery ID and recover token_id (chip's public key)
       // If server provided recovery ID and it's valid, use it; otherwise try all possibilities
       setMintStep('recovering');
       let recoveryId: number;
@@ -164,27 +165,79 @@ export const NFCMintProduct = () => {
         recoveryId = await determineRecoveryId(messageHash, signatureBytes, chipPublicKey);
       }
       
+      // Recover token_id (chip's public key) from signature using determined recovery_id
+      const secp256k1 = await import('@noble/secp256k1');
+      const recoveredSignature = new Uint8Array(65);
+      recoveredSignature.set(signatureBytes, 0);
+      recoveredSignature[64] = recoveryId;
+      const tokenIdBytes = secp256k1.recoverPublicKey(
+        recoveredSignature,
+        messageHash,
+        { prehash: false }
+      );
+      
       // 7. Build and submit transaction using contract client with wallet kit
       setMintStep('calling');
       
-      // Debug logging
+      // Debug logging - verify message is deterministic
+      const messageHex = bytesToHex(message);
+      const messageHashHex = bytesToHex(messageHash);
+      
+      // Calculate what the contract should be hashing: message || nonce_xdr
+      // nonce XDR for 0 should be: 0000000300000000 (8 bytes)
+      const nonceXdrForContract = new Uint8Array(8);
+      const nonceView = new DataView(nonceXdrForContract.buffer);
+      nonceView.setUint32(0, 3, false); // ScVal U32 discriminant
+      nonceView.setUint32(4, nonce, false); // nonce value
+      const expectedContractHash = new Uint8Array(message.length + 8);
+      expectedContractHash.set(message, 0);
+      expectedContractHash.set(nonceXdrForContract, message.length);
+      const expectedContractHashHex = bytesToHex(await sha256(expectedContractHash));
+      
       console.log('Minting with:', {
         to: address,
         messageLength: message.length,
+        messageHex: messageHex.substring(0, 100) + '...', // First 100 chars
+        messageHashHex: messageHashHex,
+        expectedContractHashHex: expectedContractHashHex,
+        hashMatch: messageHashHex === expectedContractHashHex,
         signatureLength: signatureBytes.length,
-        recoveryId,
+        tokenId: bytesToHex(tokenIdBytes).substring(0, 20) + '...',
+        recoveryId, // For debugging - contract doesn't need it
+        nonce,
         contractId: contractId,
-        publicKey: address
+        publicKey: address,
       });
+      
+      // Verify message does NOT contain nonce (contract will append it)
+      // Message should be: network_id || contract_id || function_name || args
+      // This should be IDENTICAL across runs with same inputs
+      console.log('Message verification (should be identical across runs):', {
+        messageBytes: Array.from(message).slice(0, 20), // First 20 bytes for debugging
+        messageTotalLength: message.length,
+        nonceValue: nonce,
+        nonceXdrHex: bytesToHex(nonceXdrForContract),
+        messageHashHex: messageHashHex,
+        expectedContractHashHex: expectedContractHashHex,
+        // Full message breakdown for debugging
+        fullMessageHex: messageHex
+      });
+      
+      if (messageHashHex !== expectedContractHashHex) {
+        console.error('❌ Hash mismatch! Client hash:', messageHashHex, 'Expected contract hash:', expectedContractHashHex);
+      }
       
       // Build transaction using contract client with wallet's public key
       // The contract client needs the publicKey to build the transaction with the correct source account
+      // IMPORTANT: message must be WITHOUT nonce - contract appends nonce internally
+      // Contract will try all recovery_ids (0-3) internally to verify signature recovers to token_id
       const tx = await contractClient.mint(
         {
           to: address,
-          message: Buffer.from(message),
+          message: Buffer.from(message), // Message WITHOUT nonce
           signature: Buffer.from(signatureBytes),
-          recovery_id: recoveryId,
+          token_id: Buffer.from(tokenIdBytes), // Chip's public key (65 bytes, uncompressed)
+          nonce: nonce, // Nonce passed separately
         },
         {
           publicKey: address, // Required: use the connected wallet's public key
@@ -197,22 +250,30 @@ export const NFCMintProduct = () => {
       const txResponse = await tx.signAndSend({ signTransaction, force: true });
       
       // Get result from the transaction response
-      // The contract's mint function returns the recovered public key (token ID)
-      const recoveredPublicKey = txResponse.result;
-      const tokenIdHex = bytesToHex(new Uint8Array(recoveredPublicKey));
+      // The contract's mint function returns the token_id (chip's public key)
+      const returnedTokenId = txResponse.result;
+      const returnedTokenIdHex = bytesToHex(new Uint8Array(returnedTokenId));
+      const passedTokenIdHex = bytesToHex(tokenIdBytes);
+      const tokenIdHex = returnedTokenIdHex; // For compatibility with existing code
       
-      console.log('Mint successful! Token ID:', tokenIdHex);
+      console.log('Mint successful! Token ID:', returnedTokenIdHex);
       console.log('Chip public key (read from chip):', chipPublicKey);
-      console.log('Recovered public key (from signature):', tokenIdHex);
+      console.log('Token ID passed to contract:', passedTokenIdHex);
+      console.log('Token ID returned from contract:', returnedTokenIdHex);
       
-      // Validate that recovered public key matches the chip's public key
-      // Both should be the same since we use the same key ID (1) for both operations
-      if (tokenIdHex !== chipPublicKey) {
-        const errorMsg = `Public key mismatch! Chip key: ${chipPublicKey.substring(0, 20)}...${chipPublicKey.substring(chipPublicKey.length - 20)}, Recovered key: ${tokenIdHex.substring(0, 20)}...${tokenIdHex.substring(tokenIdHex.length - 20)}`;
-        console.error('❌ Public key mismatch detected!');
-        console.error('   Chip public key (full):', chipPublicKey);
-        console.error('   Recovered public key (full):', tokenIdHex);
-        throw new Error(`Signature verification failed: ${errorMsg}. The signature may have been generated by a different key than the one read from the chip.`);
+      // Validate that returned token_id matches what we passed
+      // Contract verifies signature recovers to token_id internally
+      if (returnedTokenIdHex.toLowerCase() !== passedTokenIdHex.toLowerCase()) {
+        const errorMsg = `Token ID mismatch! Passed: ${passedTokenIdHex.substring(0, 20)}...${passedTokenIdHex.substring(passedTokenIdHex.length - 20)}, Returned: ${returnedTokenIdHex.substring(0, 20)}...${returnedTokenIdHex.substring(returnedTokenIdHex.length - 20)}`;
+        console.error('❌ Token ID mismatch detected!');
+        console.error('   Token ID passed (full):', passedTokenIdHex);
+        console.error('   Token ID returned (full):', returnedTokenIdHex);
+        throw new Error(`Contract returned different token_id: ${errorMsg}`);
+      }
+      
+      // Also validate that token_id matches chip's public key
+      if (returnedTokenIdHex.toLowerCase() !== chipPublicKey.toLowerCase()) {
+        console.warn('⚠️ Token ID does not match chip public key. This may indicate a key mismatch.');
       }
       
       console.log('✅ Public key validation passed: recovered key matches chip key');

@@ -5,7 +5,7 @@
 /**
  * Parse DER-encoded ECDSA signature to extract r and s values
  * @param {string} derHex - DER-encoded signature as hex string
- * @returns {{r: string, s: string}} - r and s values as hex strings (32 bytes each)
+ * @returns {{r: string, s: string, wasNormalized: boolean}} - r and s values as hex strings (32 bytes each), and whether s was normalized
  */
 export function parseDERSignature(derHex) {
   const der = Buffer.from(derHex, 'hex');
@@ -40,10 +40,12 @@ export function parseDERSignature(derHex) {
   const halfOrderBigInt = BigInt('0x' + HALF_CURVE_ORDER.toString('hex'));
   const orderBigInt = BigInt('0x' + CURVE_ORDER.toString('hex'));
   
+  // Track if s was normalized (s > n/2)
+  const wasNormalized = sBigInt > halfOrderBigInt;
+  
   // If s > n/2, then s = n - s
-  let sNormalized;
-  if (sBigInt > halfOrderBigInt) {
-    sNormalized = orderBigInt - sBigInt;
+  if (wasNormalized) {
+    const sNormalized = orderBigInt - sBigInt;
     sClean = Buffer.from(sNormalized.toString(16).padStart(64, '0'), 'hex');
   }
   
@@ -55,7 +57,8 @@ export function parseDERSignature(derHex) {
   
   return {
     r: rPadded.toString('hex'),
-    s: sPadded.toString('hex')
+    s: sPadded.toString('hex'),
+    wasNormalized
   };
 }
 
