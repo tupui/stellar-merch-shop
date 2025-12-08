@@ -27,6 +27,7 @@ export const NFCMintProduct = () => {
     success: boolean;
     tokenId?: string;
     publicKey?: string;
+    ndefWriteSuccess?: boolean;
     error?: string;
   }>();
 
@@ -225,9 +226,11 @@ export const NFCMintProduct = () => {
       
       // 8. Write NDEF URL to chip after successful mint
       setMintStep('writing-ndef');
+      let ndefWriteSuccess = false;
       try {
         const ndefUrl = `https://nft.stellarmerchshop.com/${tokenIdHex}`;
         await writeNDEF(ndefUrl);
+        ndefWriteSuccess = true;
       } catch (ndefError) {
         console.error('Failed to write NDEF (mint still successful):', ndefError);
         // Don't fail the mint if NDEF write fails
@@ -237,6 +240,7 @@ export const NFCMintProduct = () => {
         success: true,
         tokenId: tokenIdHex,
         publicKey: tokenIdHex,
+        ndefWriteSuccess,
       });
       
       await updateBalances();
@@ -356,9 +360,16 @@ export const NFCMintProduct = () => {
           <Text as="p" size="xs" style={{ marginTop: "8px", color: "#666" }}>
             This 65-byte public key is the NFT token ID. The NFT has been successfully minted to your wallet.
           </Text>
-          <Text as="p" size="xs" style={{ marginTop: "8px", color: "#4caf50" }}>
-            ✓ NDEF URL written to chip: https://nft.stellarmerchshop.com/{result.publicKey}
-          </Text>
+          {result.ndefWriteSuccess && (
+            <Text as="p" size="xs" style={{ marginTop: "8px", color: "#4caf50" }}>
+              ✓ NDEF URL written to chip: https://nft.stellarmerchshop.com/{result.publicKey}
+            </Text>
+          )}
+          {result.ndefWriteSuccess === false && (
+            <Text as="p" size="xs" style={{ marginTop: "8px", color: "#ff9800" }}>
+              ⚠️ Mint successful, but NDEF URL could not be written to chip (chip may be locked or read-only)
+            </Text>
+          )}
           <Button
             type="button"
             variant="secondary"
