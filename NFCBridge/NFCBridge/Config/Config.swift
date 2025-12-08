@@ -69,6 +69,8 @@ struct NFCConfig {
     
     /// Contract ID - reads from Info.plist based on current network
     /// Can be overridden via UserDefaults for runtime changes
+    /// 
+    /// - Throws: `ConfigError.contractIdNotConfigured` if contract ID is not configured for the current network
     static var contractId: String {
         // Check UserDefaults first (allows runtime override)
         if let stored = UserDefaults.standard.string(forKey: "contract_id"), !stored.isEmpty {
@@ -97,7 +99,16 @@ struct NFCConfig {
         case .testnet:
             return "CD5GYISJJKTE5SMZHS4UVSBXM2A2DKUUOUHAK2SZ24IU5TOBRV54CPK3"
         case .mainnet:
-            return ""
+            // Mainnet requires explicit configuration - fail fast with clear error
+            preconditionFailure(
+                """
+                Mainnet contract ID is not configured. Please set one of the following:
+                1. Add 'StellarContractIdMainnet' key to Info.plist with your mainnet contract ID
+                2. Call NFCConfig.setContractId("YOUR_CONTRACT_ID") at runtime
+                
+                Current network: mainnet
+                """
+            )
         case .futurenet:
             return "CD5GYISJJKTE5SMZHS4UVSBXM2A2DKUUOUHAK2SZ24IU5TOBRV54CPK3"
         }
@@ -109,6 +120,10 @@ struct NFCConfig {
     }
     
     /// Get contract ID for a specific network
+    /// 
+    /// - Parameter network: The network to get the contract ID for
+    /// - Returns: The contract ID for the specified network
+    /// - Throws: Fails with precondition if mainnet contract ID is not configured
     static func contractId(for network: Network) -> String {
         let originalNetwork = currentNetwork
         currentNetwork = network

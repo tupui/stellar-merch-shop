@@ -164,9 +164,8 @@ fn test_mint_structure() {
     }
     
     // Test all signatures: verify contract can recover token_id from signature
-    // The contract tries all recovery_ids (0-3) internally to find the one that recovers to token_id
-    // This test verifies that each signature can be used to recover the expected token_id
-    // Note: We only test the first signature with actual mint call, others just verify recovery
+    // The client determines recovery_id and passes it to the contract
+    // The contract verifies that the signature recovers to the provided token_id
     
     for (idx, (r, s)) in signatures.iter().enumerate() {
         // Normalize s value (required by Soroban's secp256k1_recover)
@@ -177,33 +176,37 @@ fn test_mint_structure() {
         sig_bytes[32..].copy_from_slice(&s_normalized);
         let signature = BytesN::from_array(&e, &sig_bytes);
         
+        // Determine the correct recovery_id by trying all possibilities (0-3)
+        // This simulates what the client does with determineRecoveryId
+        let mut correct_recovery_id: Option<u32> = None;
+        for recovery_id in 0u32..=3u32 {
+            let recovered = e.crypto().secp256k1_recover(&message_hash, &signature, recovery_id);
+            if recovered == expected_token_id {
+                correct_recovery_id = Some(recovery_id);
+                break;
+            }
+        }
+        
+        // Verify we found a valid recovery_id
+        assert!(correct_recovery_id.is_some(), "Signature {} failed: no recovery_id (0-3) recovers to expected token_id", idx + 1);
+        let recovery_id = correct_recovery_id.unwrap();
+        
         // For first signature, actually call mint to test full flow
-        // For others, just verify the contract's recovery logic works
+        // For others, just verify the recovery_id determination works
         if idx == 0 {
-            // Call mint with token_id - contract will try all recovery_ids internally
-            // to verify signature recovers to the provided token_id
+            // Call mint with recovery_id and token_id
+            // Contract will use recovery_id to recover and verify it matches token_id
             let recovered_token_id = client.mint(
                 &to,
                 &message,
                 &signature,
+                &recovery_id,
                 &expected_token_id,
                 &nonce,
             );
             
             // Verify contract returned the correct token_id
-            assert_eq!(recovered_token_id, expected_token_id, "Signature {} failed: contract did not recover to expected token_id", idx + 1);
-        } else {
-            // For subsequent signatures, verify the contract's recovery logic
-            // by manually testing that one of the recovery_ids works
-            let mut found = false;
-            for recovery_id in 0u32..=3u32 {
-                let recovered = e.crypto().secp256k1_recover(&message_hash, &signature, recovery_id);
-                if recovered == expected_token_id {
-                    found = true;
-                    break;
-                }
-            }
-            assert!(found, "Signature {} failed: no recovery_id (0-3) recovers to expected token_id", idx + 1);
+            assert_eq!(recovered_token_id, expected_token_id, "Signature {} failed: contract did not recover to expected token_id (recovery_id: {})", idx + 1, recovery_id);
         }
     }
 }

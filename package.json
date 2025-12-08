@@ -7,6 +7,7 @@
     "dev": "npm start",
     "start": "concurrently --kill-others-on-fail --names stellar,vite -c gray,green --pad-prefix \"stellar scaffold watch --build-clients\" \"vite\"",
     "nfc-server": "cd nfc-server && node index.js",
+    "check-chip": "cd nfc-server && node check-chip-capabilities.js",
     "dev:with-nfc": "concurrently --kill-others-on-fail --names nfc,stellar,vite -c blue,gray,green \"npm run nfc-server\" \"stellar scaffold watch --build-clients\" \"vite\"",
     "build": "tsc -b && vite build",
     "install:contracts": "npm install --workspace=packages && npm run build --workspace=packages",

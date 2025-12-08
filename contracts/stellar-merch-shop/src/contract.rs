@@ -39,31 +39,17 @@ impl NFCtoNFTContract for StellarMerchShop {
         to: Address,
         message: Bytes,
         signature: BytesN<64>,
+        recovery_id: u32,
         token_id: BytesN<65>,
         nonce: u32,
     ) -> BytesN<65> {
         let mut builder: Bytes = Bytes::new(&e);
         builder.append(&message.clone());
         builder.append(&nonce.clone().to_xdr(&e));
-
-        // Hash the message to get Hash<32> for signature recovery
-        // This ensures Hash is constructed via a secure cryptographic function
         let message_hash = e.crypto().sha256(&builder);
 
-        // Verify the signature recovers to the provided token_id
-        // Try all recovery_ids (0-3) to find the one that recovers to token_id
-        // This ensures the signature was created by the chip holding the private key
-        let mut recovered_token_id: Option<BytesN<65>> = None;
-        for recovery_id in 0u32..=3u32 {
-            let recovered = e.crypto().secp256k1_recover(&message_hash, &signature, recovery_id);
-            if recovered == token_id {
-                recovered_token_id = Some(recovered);
-                break;
-            }
-        }
-        
-        // If no recovery_id worked, the signature is invalid
-        if recovered_token_id.is_none() {
+        let recovered = e.crypto().secp256k1_recover(&message_hash, &signature, recovery_id);
+        if recovered != token_id {
             panic_with_error!(&e, &errors::NonFungibleTokenError::InvalidSignature);
         }
 

@@ -28,8 +28,8 @@ const env: z.infer<typeof envSchema> = parsed.success
       PUBLIC_STELLAR_NETWORK_PASSPHRASE: WalletNetwork.STANDALONE,
       PUBLIC_STELLAR_RPC_URL: "http://localhost:8000/rpc",
       PUBLIC_STELLAR_HORIZON_URL: "http://localhost:8000",
-      PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_LOCAL: "CBLTP3BVYKJURO7RCLURKMFAGSBQHYYC36WVIZKQOIK25ZQMO4SVFL4W",
-      PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_TESTNET: "CD5GYISJJKTE5SMZHS4UVSBXM2A2DKUUOUHAK2SZ24IU5TOBRV54CPK3",
+      PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_LOCAL: undefined,
+      PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_TESTNET: undefined,
       PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_MAINNET: undefined,
     };
 
@@ -161,20 +161,35 @@ export const getNetworkPassphrase = (walletNetwork?: string, walletPassphrase?: 
  * Network names are normalized to uppercase for consistent matching
  */
 export const getContractId = (walletNetwork?: string): string => {
-  // Determine which network to use and normalize to uppercase
   const networkToUse = (walletNetwork || stellarNetwork).toUpperCase();
+  
+  let contractId: string | undefined;
+  let envVarName: string;
   
   switch (networkToUse) {
     case "LOCAL":
     case "STANDALONE":
-      return env.PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_LOCAL || "CBLTP3BVYKJURO7RCLURKMFAGSBQHYYC36WVIZKQOIK25ZQMO4SVFL4W";
+      contractId = env.PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_LOCAL;
+      envVarName = "PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_LOCAL";
+      break;
     case "TESTNET":
-      return env.PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_TESTNET || "CD5GYISJJKTE5SMZHS4UVSBXM2A2DKUUOUHAK2SZ24IU5TOBRV54CPK3";
+      contractId = env.PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_TESTNET;
+      envVarName = "PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_TESTNET";
+      break;
     case "PUBLIC":
     case "MAINNET":
-      return env.PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_MAINNET || "";
+      contractId = env.PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_MAINNET;
+      envVarName = "PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_MAINNET";
+      break;
     default:
-      // Default to local if unknown network
-      return env.PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_LOCAL || "CBLTP3BVYKJURO7RCLURKMFAGSBQHYYC36WVIZKQOIK25ZQMO4SVFL4W";
+      throw new Error(`Unknown network: ${networkToUse}. Supported networks: LOCAL, TESTNET, PUBLIC, MAINNET`);
   }
+  
+  if (!contractId || contractId.trim() === '') {
+    throw new Error(`Contract ID is not configured for network ${networkToUse}. Please set ${envVarName} environment variable.`);
+  }
+  
+  // After the check, contractId is guaranteed to be a non-empty string
+  // TypeScript should narrow, but we assert to be explicit
+  return contractId as string;
 };

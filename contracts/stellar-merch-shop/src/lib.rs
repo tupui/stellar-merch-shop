@@ -39,7 +39,7 @@ pub trait NFCtoNFTContract {
     /// # Returns
     ///
     /// The token_id (chip's public key) if signature is valid.
-    fn mint(e: &Env, to: Address, message: Bytes, signature: BytesN<64>, token_id: BytesN<65>, nonce: u32) -> BytesN<65>;
+    fn mint(e: &Env, to: Address, message: Bytes, signature: BytesN<64>, recovery_id: u32, token_id: BytesN<65>, nonce: u32) -> BytesN<65>;
 
     /// Returns the number of tokens in `owner`'s account.
     ///

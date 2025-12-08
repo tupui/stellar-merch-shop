@@ -306,20 +306,16 @@ export async function determineRecoveryId(
   // Try each recovery ID (0-3)
   for (let recoveryId = 0; recoveryId <= 3; recoveryId++) {
     try {
-      // @noble/secp256k1 expects signature in "recovered" format (65 bytes: r + s + recovery_id)
-      // Create recovered format signature by appending recovery ID byte
+      // @noble/secp256k1 recoverPublicKey always expects 'recovered' format:
+      // signature must be 65 bytes = [recovery_id (1 byte)] || [r (32 bytes)] || [s (32 bytes)]
+      // messageHash is already hashed, so we set prehash: false
       const recoveredSignature = new Uint8Array(65);
-      recoveredSignature.set(signature, 0);
-      recoveredSignature[64] = recoveryId;
-      
-      // Recover public key with this recovery ID
-      // API: recoverPublicKey(signature: Bytes, message: Bytes, opts?: ECDSARecoverOpts)
-      // Signature must be in "recovered" format (65 bytes)
-      // opts.prehash defaults to true (hashes the message), but we already have a hash
+      recoveredSignature[0] = recoveryId; // Recovery ID is first byte
+      recoveredSignature.set(signature, 1); // r (32 bytes) + s (32 bytes) follow
       const recoveredKey = secp256k1.recoverPublicKey(
-        recoveredSignature, 
-        messageHash, 
-        { prehash: false } // Message is already hashed
+        recoveredSignature,
+        messageHash,
+        { prehash: false }
       );
       
       // Compare with expected key (uncompressed format)

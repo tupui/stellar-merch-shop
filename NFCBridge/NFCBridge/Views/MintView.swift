@@ -192,13 +192,14 @@ struct MintView: View {
                 throw NSError(domain: "MintView", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid token_id length: expected 65 bytes, got \(tokenId.count)"])
             }
             
-            // 6. Build transaction with signature and token_id from chip
+            // 6. Build transaction with signature, recovery_id, and token_id from chip
             currentStep = .buildingTransaction
             let transaction = try await appData.blockchainService.buildMintTransaction(
                 contractId: NFCConfig.contractId,
                 to: wallet.address,
                 message: sep53Result.message,
                 signature: signature.signatureBytes,
+                recoveryId: signature.recoveryId,
                 tokenId: tokenId,
                 nonce: nonce,
                 sourceAccount: wallet.address

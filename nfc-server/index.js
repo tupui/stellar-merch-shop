@@ -82,32 +82,26 @@ class NFCServer {
         break;
 
       case 'read-pubkey':
-        await this.checkChipStatus();
         await this.readPublicKey(ws);
         break;
 
       case 'sign':
-        await this.checkChipStatus();
         await this.signMessage(ws, data.messageDigest);
         break;
 
       case 'read-ndef':
-        await this.checkChipStatus();
         await this.readNDEF(ws);
         break;
 
       case 'write-ndef':
-        await this.checkChipStatus();
         await this.writeNDEF(ws, data.url);
         break;
 
       case 'generate-key':
-        await this.checkChipStatus();
         await this.handleGenerateKey(ws);
         break;
 
       case 'fetch-key':
-        await this.checkChipStatus();
         await this.handleFetchKey(ws, data.keyId);
         break;
 
@@ -190,12 +184,7 @@ class NFCServer {
       await this.nfcManager.waitForCardReady();
       
       const keyId = 1;
-      console.log(`readPublicKey: Using key ID ${keyId}`);
       const keyInfo = await this.blockchainOps.getKeyInfo(keyId);
-      
-      console.log(`readPublicKey: Successfully read public key for key ID ${keyId}`);
-      console.log(`readPublicKey: Public key (full): ${keyInfo.publicKey}`);
-      console.log(`readPublicKey: Counters - global: ${keyInfo.globalCounter}, key: ${keyInfo.keyCounter}`);
 
         ws.send(JSON.stringify({
           type: 'pubkey',
@@ -218,49 +207,39 @@ class NFCServer {
       return;
     }
 
-    if (!messageDigestHex || messageDigestHex.length !== 64) {
-      this.sendError(ws, 'Invalid message digest (must be 32 bytes / 64 hex chars)');
-      return;
-    }
-
-    try {
-      await this.nfcManager.waitForCardReady();
-      
-      const messageDigest = Buffer.from(messageDigestHex, 'hex');
-      
-      if (messageDigest.length !== 32) {
-        this.sendError(ws, 'Invalid message digest length');
+      if (!messageDigestHex || messageDigestHex.length !== 64) {
+        this.sendError(ws, 'Invalid message digest (must be 32 bytes / 64 hex chars)');
         return;
       }
-      
-      const keyId = 1;
-      console.log(`signMessage: Using key ID ${keyId} for signing`);
-      console.log(`signMessage: Message digest (first 20 bytes): ${messageDigestHex.substring(0, 40)}...`);
-      
-      const result = await this.blockchainOps.generateSignature(keyId, messageDigest);
-      console.log(`signMessage: Signature generated successfully for key ID ${keyId}`);
-      console.log(`signMessage: Signature length: ${result.signature.length} bytes (DER format)`);
-      console.log(`signMessage: Counters - global: ${result.globalCounter}, key: ${result.keyCounter}`);
-      
-      // Parse DER-encoded signature to extract r and s
-      const derHex = result.signature.toString('hex');
-      const { r, s, wasNormalized } = parseDERSignature(derHex);
-      
-      // Adjust recovery_id when s is normalized
-      // When s is normalized (s -> n-s), recovery_id must be adjusted: recovery_id XOR 1
-      // Original recovery_id from blockchain2go is 1, so:
-      // - If s was normalized: recovery_id = 0 (1 XOR 1)
-      // - If s was not normalized: recovery_id = 1 (1 XOR 0)
-      const v = 1;
-      const recoveryId = wasNormalized ? 0 : 1;
 
-      console.log(`signMessage: Sending signature response for key ID ${keyId}`);
-      console.log(`signMessage: s was normalized: ${wasNormalized}, Recovery ID: ${recoveryId}, Counters - global: ${result.globalCounter}, key: ${result.keyCounter}`);
+      try {
+        await this.nfcManager.waitForCardReady();
+        
+        const messageDigest = Buffer.from(messageDigestHex, 'hex');
+        
+        if (messageDigest.length !== 32) {
+          this.sendError(ws, 'Invalid message digest length');
+          return;
+        }
+        
+        const keyId = 1;
+        const result = await this.blockchainOps.generateSignature(keyId, messageDigest);
+        
+        // Parse DER-encoded signature to extract r and s
+        const derHex = result.signature.toString('hex');
+        const { r, s, wasNormalized } = parseDERSignature(derHex);
+        
+        // Adjust recovery_id when s is normalized
+        // When s is normalized (s -> n-s), recovery_id must be adjusted: recovery_id XOR 1
+        // Original recovery_id from blockchain2go is 1, so:
+        // - If s was normalized: recovery_id = 0 (1 XOR 1)
+        // - If s was not normalized: recovery_id = 1 (1 XOR 0)
+        const recoveryId = wasNormalized ? 0 : 1;
 
           ws.send(JSON.stringify({
             type: 'signature',
             success: true,
-            data: { r, s, v, recoveryId }
+            data: { r, s, recoveryId }
           }));
     } catch (error) {
       console.error('Error signing message:', error);

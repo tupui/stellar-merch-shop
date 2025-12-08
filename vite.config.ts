@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
+import path from "path";
 
 // https://vite.dev/config/
 export default defineConfig(() => {
@@ -16,6 +17,11 @@ export default defineConfig(() => {
       }),
       wasm(),
     ],
+    resolve: {
+      alias: {
+        "stellar_merch_shop": path.resolve(__dirname, "./packages/stellar_merch_shop/dist/index.js"),
+      },
+    },
     build: {
       target: "esnext",
     },

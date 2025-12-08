@@ -85,9 +85,7 @@ export const KeyManagementSection = ({ onKeyFetched, onKeyGenerated }: KeyManage
 
   return (
     <Box gap="md" direction="column" style={{ marginBottom: "32px" }}>
-      <Text as="h2" size="lg" weight="bold" style={{ marginBottom: "8px" }}>
-        Key Management
-      </Text>
+
       <Text as="p" size="sm" style={{ color: "#666", marginBottom: "24px" }}>
         Generate new keys or fetch existing keys from the NFC chip. Chips come empty and need a key to be generated first.
       </Text>

@@ -60,6 +60,7 @@ class BlockchainService {
         to: String,  // Address
         message: Data,
         signature: Data,  // 64 bytes: r + s
+        recoveryId: UInt8,  // Recovery ID (0-3) for public key recovery
         tokenId: Data,  // 65 bytes: chip's public key (uncompressed SEC1 format)
         nonce: UInt32,
         sourceAccount: String  // Source account address
