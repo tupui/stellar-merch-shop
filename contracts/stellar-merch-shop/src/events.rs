@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, contractevent, BytesN};
+use soroban_sdk::{Address, contractevent};
 
 
 #[contractevent]
@@ -8,7 +8,7 @@ pub struct Transfer {
     pub from: Address,
     #[topic]
     pub to: Address,
-    pub token_id: u32,
+    pub token_id: u64,
 }
 
 #[contractevent]
@@ -17,7 +17,7 @@ pub struct Approve {
     #[topic]
     pub approver: Address,
     #[topic]
-    pub token_id: u32,
+    pub token_id: u64,
     pub approved: Address,
     pub live_until_ledger: u32,
 }
@@ -36,5 +36,5 @@ pub struct ApproveForAll {
 pub struct Mint {
     #[topic]
     pub to: Address,
-    pub token_id: BytesN<65>,
+    pub token_id: u64,
 }

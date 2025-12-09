@@ -12,14 +12,24 @@ pub enum DataKey {
 
 #[contracttype]
 pub enum NFTStorageKey {
-    ChipNonce(BytesN<65>),
-    Owner(BytesN<65>),
+    ChipNonce(u64),
+    Owner(u64),
+    IpfsCid(u64),
     Balance(Address),
-    Approval(u32),
+    Approval(u64),
     ApprovalForAll(Address /* owner */, Address /* operator */),
     Name,
     Symbol,
     URI,
+}
+
+/// Converts a 65-byte public key (BytesN<65>) to an u64 token_id.
+fn bytes65_to_u64(e: &Env, public_key: &BytesN<65>) -> u64 {
+    let hash = e.crypto().sha256(&Bytes::from_array(e, &public_key.to_array()));
+    let hash_bytes = hash.to_array();
+    let mut u64_bytes = [0u8; 8];
+    u64_bytes.copy_from_slice(&hash_bytes[0..8]);
+    u64::from_be_bytes(u64_bytes)
 }
 
 
@@ -40,39 +50,39 @@ impl NFCtoNFTContract for StellarMerchShop {
         message: Bytes,
         signature: BytesN<64>,
         recovery_id: u32,
-        token_id: BytesN<65>,
+        public_key: BytesN<65>,
         nonce: u32,
-    ) -> BytesN<65> {
+        ipfs_cid: String,
+    ) -> u64 {
         let mut builder: Bytes = Bytes::new(&e);
         builder.append(&message.clone());
         builder.append(&nonce.clone().to_xdr(&e));
         let message_hash = e.crypto().sha256(&builder);
 
         let recovered = e.crypto().secp256k1_recover(&message_hash, &signature, recovery_id);
-        if recovered != token_id {
+        if recovered != public_key {
             panic_with_error!(&e, &errors::NonFungibleTokenError::InvalidSignature);
         }
 
-        let owner_key = NFTStorageKey::Owner(token_id.clone());
+        let token_id = bytes65_to_u64(e, &public_key);
+        let owner_key = NFTStorageKey::Owner(token_id);
 
         if e
             .storage()
             .persistent()
-            .get::<NFTStorageKey, BytesN<65>>(&owner_key)
+            .get::<NFTStorageKey, Address>(&owner_key)
             .is_some()
         {
             panic_with_error!(&e, &errors::NonFungibleTokenError::TokenAlreadyMinted);
         }
 
         e.storage().persistent().set(&owner_key, &to);
+        e.storage().persistent().set(&NFTStorageKey::ChipNonce(token_id), &nonce);
+        
+        // Store only the CID (not the full URI)
+        e.storage().persistent().set(&NFTStorageKey::IpfsCid(token_id), &ipfs_cid);
 
-        // TODO
-        // - Update balance: increment to's token count
-        // - update counter collection itself
-
-        e.storage().persistent().set(&NFTStorageKey::ChipNonce(token_id.clone()), &nonce);
-
-        events::Mint { to, token_id: token_id.clone() }.publish(&e);
+        events::Mint { to, token_id }.publish(&e);
 
         token_id
     }
@@ -81,21 +91,26 @@ impl NFCtoNFTContract for StellarMerchShop {
         todo!()
     }
 
-    fn owner_of(e: &Env, token_id: BytesN<65>) -> Address {
+    fn owner_of(e: &Env, token_id: u64) -> Address {
         e.storage().persistent()
         .get(&NFTStorageKey::Owner(token_id))
         .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::NonExistentToken))
     }
 
-    fn transfer(e: &Env, from: Address, to: Address, token_id: BytesN<65>) {
+    fn transfer(e: &Env, from: Address, to: Address, token_id: u64) {
+        let owner = Self::owner_of(e, token_id);
+        if owner != from {
+            panic_with_error!(e, &errors::NonFungibleTokenError::IncorrectOwner);
+        }
+        e.storage().persistent().set(&NFTStorageKey::Owner(token_id), &to);
+        events::Transfer { from, to, token_id }.publish(e);
+    }
+
+    fn transfer_from(e: &Env, spender: Address, from: Address, to: Address, token_id: u64) {
         todo!()
     }
 
-    fn transfer_from(e: &Env, spender: Address, from: Address, to: Address, token_id: BytesN<65>) {
-        todo!()
-    }
-
-    fn approve(e: &Env, approver: Address, approved: Address, token_id: BytesN<65>, live_until_ledger: u32) {
+    fn approve(e: &Env, approver: Address, approved: Address, token_id: u64, live_until_ledger: u32) {
         todo!()
     }
 
@@ -103,7 +118,7 @@ impl NFCtoNFTContract for StellarMerchShop {
         todo!()
     }
 
-    fn get_approved(e: &Env, token_id: BytesN<65>) -> Option<Address> {
+    fn get_approved(e: &Env, token_id: u64) -> Option<Address> {
         todo!()
     }
 
@@ -111,7 +126,7 @@ impl NFCtoNFTContract for StellarMerchShop {
         todo!()
     }
 
-    fn get_nonce(e: &Env, token_id: BytesN<65>) -> u32 {
+    fn get_nonce(e: &Env, token_id: u64) -> u32 {
         e.storage().persistent()
         .get(&NFTStorageKey::ChipNonce(token_id))
         .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::NonExistentToken))
@@ -131,8 +146,24 @@ impl NFCtoNFTContract for StellarMerchShop {
             .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::UnsetMetadata))
     }
 
-    fn token_uri(e: &Env, token_id: BytesN<65>) -> String {
-        todo!()
+    fn token_uri(e: &Env, token_id: u64) -> String {
+        // Verify token exists
+        let _owner = Self::owner_of(e, token_id);
+        
+        // Retrieve IPFS CID for this token
+        let ipfs_cid: String = e.storage()
+            .persistent()
+            .get(&NFTStorageKey::IpfsCid(token_id))
+            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::UnsetMetadata));
+        
+        // Construct full IPFS URI: ipfs://{cid}
+        let ipfs_prefix = b"ipfs://";
+        let mut uri_bytes = Bytes::new(e);
+        uri_bytes.append(&Bytes::from_slice(e, ipfs_prefix));
+        uri_bytes.append(&Bytes::from(ipfs_cid.clone()));
+        
+        // Convert Bytes to String
+        String::from(uri_bytes)
     }
 
 }

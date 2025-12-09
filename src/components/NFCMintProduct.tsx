@@ -10,7 +10,7 @@ import { useWallet } from "../hooks/useWallet";
 import { useNFC } from "../hooks/useNFC";
 import { Box } from "./layout/Box";
 import { KeyManagementSection } from "./KeyManagementSection";
-import { bytesToHex, hexToBytes, createSEP53Message, determineRecoveryId } from "../util/crypto";
+import { hexToBytes, createSEP53Message, determineRecoveryId } from "../util/crypto";
 import { getNetworkPassphrase, getRpcUrl, getContractId } from "../contracts/util";
 import * as Client from "stellar_merch_shop";
 import { NFCServerNotRunningError, ChipNotPresentError, APDUCommandFailedError, RecoveryIdError } from "../util/nfcClient";
@@ -24,6 +24,7 @@ export const NFCMintProduct = () => {
   const [mintStep, setMintStep] = useState<MintStep>('idle');
   const [ndefData, setNdefData] = useState<string | null>(null);
   const [selectedKeyId, setSelectedKeyId] = useState<string>("1");
+  const [ipfsCid, setIpfsCid] = useState<string>("");
   const [result, setResult] = useState<{
     success: boolean;
     tokenId?: string;
@@ -108,7 +109,7 @@ export const NFCMintProduct = () => {
         throw new Error('Key ID must be between 1 and 255');
       }
 
-      // 1. Read chip's public key (this will be the token ID)
+      // 1. Read chip's public key
       setMintStep('reading');
       const chipPublicKey = await readChip(keyId);
       
@@ -149,17 +150,19 @@ export const NFCMintProduct = () => {
       const signatureResult = await signWithChip(messageHash, keyId);
       const { signatureBytes, recoveryId: providedRecoveryId } = signatureResult;
 
-      // 6. Determine recovery ID and recover token_id (chip's public key)
-      // Use provided recovery ID if valid, otherwise determine it
+      // 6. Determine recovery ID to pass to contract
+      // The contract will verify the signature internally
+      // IMPORTANT: Always verify recovery ID, even if chip provides one, to ensure it's correct
       setMintStep('recovering');
       let recoveryId: number;
       
-      // Use provided recovery ID if it's valid (0-3)
-      if (providedRecoveryId !== undefined && Number.isInteger(providedRecoveryId) && providedRecoveryId >= 0 && providedRecoveryId <= 3) {
-        recoveryId = providedRecoveryId;
-      } else {
-        // Determine recovery ID by trying all possibilities
-        recoveryId = await determineRecoveryId(messageHash, signatureBytes, chipPublicKey);
+      // Always determine recovery ID by trying all possibilities to ensure correctness
+      // The chip-provided recovery ID might be incorrect or based on different assumptions
+      recoveryId = await determineRecoveryId(messageHash, signatureBytes, chipPublicKey);
+      
+      // Log if chip-provided recovery ID differs from verified one (for debugging)
+      if (providedRecoveryId !== undefined && providedRecoveryId !== recoveryId) {
+        console.warn(`Recovery ID mismatch: Chip provided ${providedRecoveryId}, but verified recovery ID is ${recoveryId}. Using verified recovery ID.`);
       }
       
       // Ensure recoveryId is a valid integer between 0 and 3
@@ -167,97 +170,65 @@ export const NFCMintProduct = () => {
         throw new Error(`Invalid recovery ID: ${recoveryId}. Must be an integer between 0 and 3.`);
       }
       
-      // Recover public key from signature for verification (not for token_id)
-      // @noble/secp256k1 recoverPublicKey always expects 'recovered' format:
-      // signature must be 65 bytes = [recovery_id (1 byte)] || [r (32 bytes)] || [s (32 bytes)]
-      // messageHash is already hashed, so we set prehash: false
-      // recoverPublicKey returns compressed (33 bytes), but we need uncompressed (65 bytes) for comparison
-      const secp256k1 = await import('@noble/secp256k1');
-      // Construct 65-byte signature with recovery ID as FIRST byte, then r and s
-      const recoveredSignature = new Uint8Array(65);
-      recoveredSignature[0] = recoveryId; // Recovery ID is first byte
-      recoveredSignature.set(signatureBytes, 1); // r (32 bytes) + s (32 bytes) follow
-      const compressedKey = secp256k1.recoverPublicKey(
-        recoveredSignature,
-        messageHash,
-        { prehash: false }
-      );
-      // Convert compressed (33 bytes) to uncompressed (65 bytes) format
-      const point = secp256k1.Point.fromBytes(compressedKey);
-      const recoveredKeyBytes = point.toBytes(false); // false = uncompressed
-      
-      // Convert chip's public key (hex string) to bytes for token_id
-      // token_id MUST be the public key read from the chip, not the recovered key
+      // Convert chip's public key (hex string) to bytes for passing to contract
       const chipPublicKeyBytes = hexToBytes(chipPublicKey);
       
-      // Verify recovered key matches chip's public key
-      const recoveredKeyHex = bytesToHex(recoveredKeyBytes);
-      if (recoveredKeyHex.toLowerCase() !== chipPublicKey.toLowerCase()) {
-        throw new Error(`Signature verification failed: Recovered key does not match chip public key. Recovered: ${recoveredKeyHex.substring(0, 20)}...${recoveredKeyHex.substring(recoveredKeyHex.length - 20)}, Chip: ${chipPublicKey.substring(0, 20)}...${chipPublicKey.substring(chipPublicKey.length - 20)}`);
+      // Validate public key format (must be 65 bytes, uncompressed, starting with 0x04)
+      if (chipPublicKeyBytes.length !== 65) {
+        throw new Error(`Invalid public key length: expected 65 bytes (uncompressed), got ${chipPublicKeyBytes.length} bytes`);
+      }
+      if (chipPublicKeyBytes[0] !== 0x04) {
+        throw new Error(`Invalid public key format: expected uncompressed key (starting with 0x04), got 0x${chipPublicKeyBytes[0].toString(16).padStart(2, '0')}`);
       }
       
-      // 7. Build and submit transaction using contract client with wallet kit
+      // 7. Build and submit transaction using contract client
       setMintStep('calling');
       
-      // Build transaction using contract client with wallet's public key
-      // The contract client needs the publicKey to build the transaction with the correct source account
-      // IMPORTANT: message must be WITHOUT nonce - contract appends nonce internally
-      // Contract uses provided recovery_id to recover and verifies it matches token_id
-      // token_id MUST be the public key read from the chip (not the recovered key)
+      // Validate IPFS CID is provided
+      if (!ipfsCid || ipfsCid.trim() === '') {
+        throw new Error('IPFS CID is required for minting');
+      }
+      
+      // Build transaction using contract client
+      // Contract will verify signature matches public_key and convert public_key to u64 token_id (SEP-50 compliant)
       const tx = await contractClient.mint(
         {
           to: address,
-          message: Buffer.from(message), // Message WITHOUT nonce
+          message: Buffer.from(message),
           signature: Buffer.from(signatureBytes),
-          recovery_id: recoveryId, // Recovery ID determined by client
-          token_id: Buffer.from(chipPublicKeyBytes), // Chip's public key read from chip (65 bytes, uncompressed)
-          nonce: nonce, // Nonce passed separately
+          recovery_id: recoveryId,
+          public_key: Buffer.from(chipPublicKeyBytes), // Chip's public key (65 bytes, uncompressed)
+          nonce: nonce,
+          ipfs_cid: ipfsCid.trim(), // IPFS CID for metadata
         },
         {
-          publicKey: address, // Required: use the connected wallet's public key
-        } as any // Type assertion needed because AssembledTransactionOptions requires full ClientOptions
+          publicKey: address,
+        } as any
       );
       
-      // Sign and send using wallet kit
-      // Use force: true because this will be a write operation in the future
+      // Sign and send transaction
       setMintStep('confirming');
       const txResponse = await tx.signAndSend({ signTransaction, force: true });
       
-      // Get result from the transaction response
-      // The contract's mint function returns the token_id (chip's public key)
-      const returnedTokenId = txResponse.result;
-      const returnedTokenIdHex = bytesToHex(new Uint8Array(returnedTokenId));
-      const passedTokenIdHex = bytesToHex(chipPublicKeyBytes);
-      const tokenIdHex = returnedTokenIdHex; // For compatibility with existing code
+      // Contract returns u64 token_id (bigint)
+      const returnedTokenId = txResponse.result as bigint;
+      const tokenIdString = returnedTokenId.toString();
       
-      // Validate that returned token_id matches what we passed (chip's public key)
-      // Contract verifies signature recovers to token_id internally
-      if (returnedTokenIdHex.toLowerCase() !== passedTokenIdHex.toLowerCase()) {
-        const errorMsg = `Token ID mismatch! Passed: ${passedTokenIdHex.substring(0, 20)}...${passedTokenIdHex.substring(passedTokenIdHex.length - 20)}, Returned: ${returnedTokenIdHex.substring(0, 20)}...${returnedTokenIdHex.substring(returnedTokenIdHex.length - 20)}`;
-        throw new Error(`Contract returned different token_id: ${errorMsg}`);
-      }
-      
-      // Validate that returned token_id matches chip's public key (should always match since we passed it)
-      if (returnedTokenIdHex.toLowerCase() !== chipPublicKey.toLowerCase()) {
-        console.warn('Token ID does not match chip public key. This may indicate a key mismatch.');
-      }
-      
-      // 8. Write NDEF URL to chip after successful mint
+      // Write NDEF URL to chip after successful mint
       setMintStep('writing-ndef');
       let ndefWriteSuccess = false;
       try {
-        const ndefUrl = `https://nft.stellarmerchshop.com/${tokenIdHex}`;
+        const ndefUrl = `https://nft.stellarmerchshop.com/${tokenIdString}`;
         await writeNDEF(ndefUrl);
         ndefWriteSuccess = true;
       } catch (ndefError) {
         console.error('Failed to write NDEF (mint still successful):', ndefError);
-        // Don't fail the mint if NDEF write fails
       }
       
       setResult({
         success: true,
-        tokenId: tokenIdHex,
-        publicKey: tokenIdHex,
+        tokenId: tokenIdString,
+        publicKey: chipPublicKey,
         ndefWriteSuccess,
       });
       
@@ -452,10 +423,28 @@ export const NFCMintProduct = () => {
         </Box>
       ) : (
         <Box gap="sm" direction="column">
+          {/* IPFS CID Input */}
+          <Box gap="xs" direction="column" style={{ marginBottom: "16px" }}>
+            <Text as="p" size="sm" weight="semi-bold">
+              IPFS CID (for metadata)
+            </Text>
+            <Input
+              id="ipfs-cid-input"
+              type="text"
+              value={ipfsCid}
+              onChange={(e) => setIpfsCid(e.target.value)}
+              placeholder="Qm..."
+              disabled={minting || signing}
+              fieldSize="md"
+            />
+            <Text as="p" size="xs" style={{ color: "#666", marginTop: "4px" }}>
+              Enter the IPFS CID for the token metadata JSON file
+            </Text>
+          </Box>
 
           <Button
             type="submit"
-            disabled={minting || signing}
+            disabled={minting || signing || !ipfsCid.trim()}
             isLoading={minting || signing}
             style={{ marginTop: "12px" }}
             variant="primary"

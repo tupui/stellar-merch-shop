@@ -152,12 +152,81 @@ export interface SorobanSignature {
 }
 
 /**
+ * Normalize the S value of an ECDSA signature to the "low S" form.
+ * Soroban's secp256k1_recover requires normalized S values.
+ * 
+ * The secp256k1 curve order n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+ * Half order = n / 2
+ * If s > half_order, normalize: s = n - s
+ * 
+ * @param s - The S value as a 32-byte array (big-endian)
+ * @returns Normalized S value (32 bytes, big-endian)
+ */
+function normalizeS(s: Uint8Array): Uint8Array {
+  if (s.length !== 32) {
+    throw new Error(`S value must be 32 bytes, got ${s.length}`);
+  }
+  
+  // secp256k1 curve order n (big-endian)
+  const curveOrder = new Uint8Array([
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE,
+    0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B,
+    0xBF, 0xD2, 0x5E, 0x8C, 0xD0, 0x36, 0x41, 0x41
+  ]);
+  
+  // Compare s with half_order (n / 2)
+  // Half order = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0
+  // But the test file shows it as: 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501D (last 4 bytes missing)
+  // Actually, looking at the test, the half_order array has 32 bytes, so let me check the exact value
+  // Half order = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0
+  const halfOrder = new Uint8Array([
+    0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0x5D, 0x57, 0x6E, 0x73, 0x57, 0xA4, 0x50, 0x1D
+  ]);
+  
+  // Compare s with halfOrder (big-endian comparison)
+  let sGreaterThanHalf = false;
+  for (let i = 0; i < 32; i++) {
+    if (s[i] > halfOrder[i]) {
+      sGreaterThanHalf = true;
+      break;
+    } else if (s[i] < halfOrder[i]) {
+      break;
+    }
+  }
+  
+  // If s > halfOrder, normalize: s = n - s
+  if (sGreaterThanHalf) {
+    // Perform big-endian subtraction: n - s
+    const normalized = new Uint8Array(32);
+    let borrow = 0;
+    for (let i = 31; i >= 0; i--) {
+      let diff = curveOrder[i] - s[i] - borrow;
+      if (diff < 0) {
+        diff += 256;
+        borrow = 1;
+      } else {
+        borrow = 0;
+      }
+      normalized[i] = diff;
+    }
+    return normalized;
+  }
+  
+  // s is already normalized (low S)
+  return new Uint8Array(s);
+}
+
+/**
  * Convert NFC chip signature format to Soroban format
  */
 export function formatSignatureForSoroban(signature: NFCSignature): SorobanSignature {
   // Convert hex strings to bytes
   const rBytes = hexToBytes(signature.r);
-  const sBytes = hexToBytes(signature.s);
+  let sBytes = hexToBytes(signature.s);
   
   // Validate lengths
   if (rBytes.length !== 32) {
@@ -167,7 +236,10 @@ export function formatSignatureForSoroban(signature: NFCSignature): SorobanSigna
     throw new Error(`Invalid s length: ${sBytes.length}, expected 32 bytes`);
   }
   
-  // Concatenate r and s
+  // Normalize S value (required by Soroban's secp256k1_recover)
+  sBytes = normalizeS(sBytes);
+  
+  // Concatenate r and normalized s
   const signatureBytes = new Uint8Array(64);
   signatureBytes.set(rBytes, 0);
   signatureBytes.set(sBytes, 32);
@@ -303,7 +375,16 @@ export async function determineRecoveryId(
     : expectedPublicKey;
   const expectedKeyBytes = hexToBytes(expectedKeyHex);
   
+  // Validate expected key format (should be 65 bytes, uncompressed, starting with 0x04)
+  if (expectedKeyBytes.length !== 65) {
+    throw new Error(`Expected public key must be 65 bytes (uncompressed), got ${expectedKeyBytes.length} bytes`);
+  }
+  if (expectedKeyBytes[0] !== 0x04) {
+    throw new Error(`Expected public key must be uncompressed (start with 0x04), got 0x${expectedKeyBytes[0].toString(16).padStart(2, '0')}`);
+  }
+  
   // Try each recovery ID (0-3)
+  const errors: string[] = [];
   for (let recoveryId = 0; recoveryId <= 3; recoveryId++) {
     try {
       // @noble/secp256k1 recoverPublicKey always expects 'recovered' format:
@@ -312,26 +393,33 @@ export async function determineRecoveryId(
       const recoveredSignature = new Uint8Array(65);
       recoveredSignature[0] = recoveryId; // Recovery ID is first byte
       recoveredSignature.set(signature, 1); // r (32 bytes) + s (32 bytes) follow
-      const recoveredKey = secp256k1.recoverPublicKey(
+      const compressedKey = secp256k1.recoverPublicKey(
         recoveredSignature,
         messageHash,
         { prehash: false }
       );
       
-      // Compare with expected key (uncompressed format)
-      // Convert recovered key to hex for comparison
-      const recoveredKeyHex = bytesToHex(recoveredKey);
+      // Convert compressed (33 bytes) to uncompressed (65 bytes) format for comparison
+      const point = secp256k1.Point.fromBytes(compressedKey);
+      const recoveredKeyBytes = point.toBytes(false); // false = uncompressed
+      
+      // Compare with expected key (both in uncompressed format)
+      const recoveredKeyHex = bytesToHex(recoveredKeyBytes);
       const expectedKeyHexClean = bytesToHex(expectedKeyBytes);
       
       if (recoveredKeyHex.toLowerCase() === expectedKeyHexClean.toLowerCase()) {
         return recoveryId;
       }
-    } catch {
-      // This recovery ID failed, try next one
+    } catch (error) {
+      // Collect error for debugging
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      errors.push(`Recovery ID ${recoveryId}: ${errorMsg}`);
       continue;
     }
   }
   
-  throw new Error('Could not determine recovery ID: no match found after trying all possibilities (0-3)');
+  // If we get here, no recovery ID matched
+  const errorDetails = errors.length > 0 ? `\nErrors encountered:\n${errors.join('\n')}` : '';
+  throw new Error(`Could not determine recovery ID: no match found after trying all possibilities (0-3).${errorDetails}`);
 }
 

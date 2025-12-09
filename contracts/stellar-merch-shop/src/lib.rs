@@ -1,7 +1,6 @@
 #![no_std]
 #![allow(dead_code)]
 
-
 use soroban_sdk::{contract, contractmeta, Env, Address, String, BytesN, Bytes};
 
 contractmeta!(key = "Description", val = "Stellar Merch Shop");
@@ -23,9 +22,8 @@ pub trait NFCtoNFTContract {
     /// Mint NFT using NFC chip signature.
     ///
     /// This function verifies that the provided signature was created by an Infineon
-    /// NFC chip by recovering the chip's public key. The contract tries all recovery_ids
-    /// (0-3) to find the one that recovers to the provided token_id, ensuring the signature
-    /// is valid and matches the chip's public key.
+    /// NFC chip by recovering the chip's public key. The public key is converted to
+    /// a SEP-50 compliant u64 token_id.
     ///
     /// # Arguments
     ///
@@ -33,13 +31,15 @@ pub trait NFCtoNFTContract {
     /// * `to` - Account of the token's owner.
     /// * `message` - The message that was signed without the nonce.
     /// * `signature` - 64-byte ECDSA signature from NFC chip.
-    /// * `token_id` - The chip's public key (uncompressed SEC1 format).
+    /// * `recovery_id` - Recovery ID (0-3) for signature recovery.
+    /// * `public_key` - The chip's public key (uncompressed SEC1 format, 65 bytes).
     /// * `nonce` - A nonce to prevent replay attacks.
+    /// * `ipfs_cid` - IPFS CID for the token metadata.
     ///
     /// # Returns
     ///
-    /// The token_id (chip's public key) if signature is valid.
-    fn mint(e: &Env, to: Address, message: Bytes, signature: BytesN<64>, recovery_id: u32, token_id: BytesN<65>, nonce: u32) -> BytesN<65>;
+    /// The u64 token_id (SEP-50 compliant) if signature is valid.
+    fn mint(e: &Env, to: Address, message: Bytes, signature: BytesN<64>, recovery_id: u32, public_key: BytesN<65>, nonce: u32, ipfs_cid: String) -> u64;
 
     /// Returns the number of tokens in `owner`'s account.
     ///
@@ -59,7 +59,7 @@ pub trait NFCtoNFTContract {
     /// # Notes
     ///
     /// If the token does not exist, this function is expected to panic.
-    fn owner_of(e: &Env, token_id: BytesN<65>) -> Address;
+    fn owner_of(e: &Env, token_id: u64) -> Address;
 
     /// Transfers `token_id` token from `from` to `to`.
     ///
@@ -78,7 +78,7 @@ pub trait NFCtoNFTContract {
     ///
     /// * topics - `["transfer", from: Address, to: Address]`
     /// * data - `[token_id: BytesN<65>]`
-    fn transfer(e: &Env, from: Address, to: Address, token_id: BytesN<65>);
+    fn transfer(e: &Env, from: Address, to: Address, token_id: u64);
 
     /// Transfers `token_id` token from `from` to `to` by using `spender`s
     /// approval.
@@ -104,7 +104,7 @@ pub trait NFCtoNFTContract {
     ///
     /// * topics - `["transfer", from: Address, to: Address]`
     /// * data - `[token_id: BytesN<65>]`
-    fn transfer_from(e: &Env, spender: Address, from: Address, to: Address, token_id: BytesN<65>);
+    fn transfer_from(e: &Env, spender: Address, from: Address, to: Address, token_id: u64);
 
     /// Gives permission to `approved` to transfer `token_id` token to another
     /// account. The approval is cleared when the token is transferred.
@@ -126,7 +126,7 @@ pub trait NFCtoNFTContract {
     ///
     /// * topics - `["approve", from: Address, to: Address]`
     /// * data - `[token_id: BytesN<65>, live_until_ledger: u32]`
-    fn approve(e: &Env, approver: Address, approved: Address, token_id: BytesN<65>, live_until_ledger: u32);
+    fn approve(e: &Env, approver: Address, approved: Address, token_id: u64, live_until_ledger: u32);
 
     /// Approve or remove `operator` as an operator for the owner.
     ///
@@ -162,7 +162,7 @@ pub trait NFCtoNFTContract {
     /// # Notes
     ///
     /// If the token does not exist, this function is expected to panic.
-    fn get_approved(e: &Env, token_id: BytesN<65>) -> Option<Address>;
+    fn get_approved(e: &Env, token_id: u64) -> Option<Address>;
 
     /// Returns whether the `operator` is allowed to manage all the assets of
     /// `owner`.
@@ -174,7 +174,7 @@ pub trait NFCtoNFTContract {
     /// * `operator` - Account to be checked.
     fn is_approved_for_all(e: &Env, owner: Address, operator: Address) -> bool;
 
-    fn get_nonce(e: &Env, token_id: BytesN<65>) -> u32;
+    fn get_nonce(e: &Env, token_id: u64) -> u32;
 
     /// Returns the token collection name.
     ///
@@ -200,5 +200,5 @@ pub trait NFCtoNFTContract {
     /// # Notes
     ///
     /// If the token does not exist, this function is expected to panic.
-    fn token_uri(e: &Env, token_id: BytesN<65>) -> String;
+    fn token_uri(e: &Env, token_id: u64) -> String;
 }

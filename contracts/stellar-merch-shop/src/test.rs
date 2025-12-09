@@ -90,8 +90,8 @@ fn test_mint_structure() {
     builder.append(&nonce.to_xdr(&e));
     let message_hash = e.crypto().sha256(&builder);
     
-    // Expected token ID (public key from NFC chip)
-    let expected_token_id = BytesN::from_array(
+    // Expected public key from NFC chip
+    let expected_public_key = BytesN::from_array(
         &e,
         &[
             0x04, 0x24, 0xf8, 0xcd, 0x2c, 0x99, 0xc9, 0x57, 0x91, 0x59, 0xc9, 0x9c, 0x99, 0x1c, 0xa9, 0x36,
@@ -101,6 +101,13 @@ fn test_mint_structure() {
             0x2f,
         ],
     );
+    
+    // Convert public key to u64 token_id (as contract does)
+    let hash = e.crypto().sha256(&Bytes::from_array(&e, &expected_public_key.to_array()));
+    let hash_bytes = hash.to_array();
+    let mut u64_bytes = [0u8; 8];
+    u64_bytes.copy_from_slice(&hash_bytes[0..8]);
+    let expected_token_id_u64 = u64::from_be_bytes(u64_bytes);
     
     // Test signatures: (r, s) pairs in 64-byte format, parsed from DER signatures from blockchain2go CLI
     // These are the three signatures generated for message hash 53d79d1d1cdcb175a480d34dddf359d3bf9f441d35d5e86b8a3ea78afba9491b
@@ -181,32 +188,42 @@ fn test_mint_structure() {
         let mut correct_recovery_id: Option<u32> = None;
         for recovery_id in 0u32..=3u32 {
             let recovered = e.crypto().secp256k1_recover(&message_hash, &signature, recovery_id);
-            if recovered == expected_token_id {
+            if recovered == expected_public_key {
                 correct_recovery_id = Some(recovery_id);
                 break;
             }
         }
         
         // Verify we found a valid recovery_id
-        assert!(correct_recovery_id.is_some(), "Signature {} failed: no recovery_id (0-3) recovers to expected token_id", idx + 1);
+        assert!(correct_recovery_id.is_some(), "Signature {} failed: no recovery_id (0-3) recovers to expected public_key", idx + 1);
         let recovery_id = correct_recovery_id.unwrap();
         
         // For first signature, actually call mint to test full flow
         // For others, just verify the recovery_id determination works
         if idx == 0 {
-            // Call mint with recovery_id and token_id
-            // Contract will use recovery_id to recover and verify it matches token_id
-            let recovered_token_id = client.mint(
+            // Call mint with recovery_id and public_key, plus IPFS CID
+            let ipfs_cid = String::from_str(&e, "QmTest123");
+            let returned_token_id = client.mint(
                 &to,
                 &message,
                 &signature,
                 &recovery_id,
-                &expected_token_id,
+                &expected_public_key,
                 &nonce,
+                &ipfs_cid,
             );
             
-            // Verify contract returned the correct token_id
-            assert_eq!(recovered_token_id, expected_token_id, "Signature {} failed: contract did not recover to expected token_id (recovery_id: {})", idx + 1, recovery_id);
+            // Verify contract returned the correct u64 token_id
+            assert_eq!(returned_token_id, expected_token_id_u64, "Signature {} failed: contract did not return expected u64 token_id (recovery_id: {})", idx + 1, recovery_id);
+            
+            // Verify owner was set correctly
+            let owner = client.owner_of(&returned_token_id);
+            assert_eq!(owner, to);
+            
+            // Verify token_uri returns correct IPFS URI
+            let uri = client.token_uri(&returned_token_id);
+            // Verify URI is not empty (full verification would require string comparison)
+            assert!(uri.len() > 0);
         }
     }
 }
