@@ -34,13 +34,13 @@ if (typeof window !== 'undefined') {
 export const networks = {
   standalone: {
     networkPassphrase: "Standalone Network ; February 2017",
-    contractId: "CAQ37ZQTL2BRE6WNGLC7IZHELP5T2L5NIIHKOY4MT4ZJXHQNMAK45IY4",
+    contractId: "CCHCEWHZOQXZTV2ARDUUOHSDHAQVKJBEIOVXOMWWMEY6E35B57XXDA3E",
   }
 } as const
 
-export type DataKey = {tag: "Admin", values: void} | {tag: "Nonce", values: void};
+export type DataKey = {tag: "Admin", values: void} | {tag: "Nonce", values: void} | {tag: "NextTokenId", values: void} | {tag: "MaxTokens", values: void};
 
-export type NFTStorageKey = {tag: "ChipNonce", values: readonly [u64]} | {tag: "Owner", values: readonly [u64]} | {tag: "IpfsCid", values: readonly [u64]} | {tag: "Balance", values: readonly [string]} | {tag: "Approval", values: readonly [u64]} | {tag: "ApprovalForAll", values: readonly [string, string]} | {tag: "Name", values: void} | {tag: "Symbol", values: void} | {tag: "URI", values: void};
+export type NFTStorageKey = {tag: "ChipNonce", values: readonly [u64]} | {tag: "Owner", values: readonly [u64]} | {tag: "PublicKey", values: readonly [u64]} | {tag: "TokenIdByPublicKey", values: readonly [Buffer]} | {tag: "Balance", values: readonly [string]} | {tag: "Approval", values: readonly [u64]} | {tag: "ApprovalForAll", values: readonly [string, string]} | {tag: "Name", values: void} | {tag: "Symbol", values: void} | {tag: "URI", values: void};
 
 export const NonFungibleTokenError = {
   /**
@@ -116,7 +116,7 @@ export interface Client {
   /**
    * Construct and simulate a mint transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
-  mint: ({to, message, signature, recovery_id, public_key, nonce, ipfs_cid}: {to: string, message: Buffer, signature: Buffer, recovery_id: u32, public_key: Buffer, nonce: u32, ipfs_cid: string}, options?: {
+  mint: ({to, message, signature, recovery_id, public_key, nonce}: {to: string, message: Buffer, signature: Buffer, recovery_id: u32, public_key: Buffer, nonce: u32}, options?: {
     /**
      * The fee to pay for the transaction. Default: BASE_FEE
      */
@@ -377,7 +377,7 @@ export interface Client {
 export class Client extends ContractClient {
   static async deploy<T = Client>(
         /** Constructor/Initialization Args for the contract's `__constructor` method */
-        {admin, name, symbol, uri}: {admin: string, name: string, symbol: string, uri: string},
+        {admin, name, symbol, uri, max_tokens}: {admin: string, name: string, symbol: string, uri: string, max_tokens: u64},
     /** Options for initializing a Client as well as for calling a method, with extras specific to deploying. */
     options: MethodOptions &
       Omit<ContractClientOptions, "contractId"> & {
@@ -389,14 +389,14 @@ export class Client extends ContractClient {
         format?: "hex" | "base64";
       }
   ): Promise<AssembledTransaction<T>> {
-    return ContractClient.deploy({admin, name, symbol, uri}, options)
+    return ContractClient.deploy({admin, name, symbol, uri, max_tokens}, options)
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAAAgAAAAAAAAAAAAAABUFkbWluAAAAAAAAAAAAAAAAAAAFTm9uY2UAAAA=",
-        "AAAAAgAAAAAAAAAAAAAADU5GVFN0b3JhZ2VLZXkAAAAAAAAJAAAAAQAAAAAAAAAJQ2hpcE5vbmNlAAAAAAAAAQAAAAYAAAABAAAAAAAAAAVPd25lcgAAAAAAAAEAAAAGAAAAAQAAAAAAAAAHSXBmc0NpZAAAAAABAAAABgAAAAEAAAAAAAAAB0JhbGFuY2UAAAAAAQAAABMAAAABAAAAAAAAAAhBcHByb3ZhbAAAAAEAAAAGAAAAAQAAAAAAAAAOQXBwcm92YWxGb3JBbGwAAAAAAAIAAAATAAAAEwAAAAAAAAAAAAAABE5hbWUAAAAAAAAAAAAAAAZTeW1ib2wAAAAAAAAAAAAAAAAAA1VSSQA=",
-        "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAQAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAEbmFtZQAAABAAAAAAAAAABnN5bWJvbAAAAAAAEAAAAAAAAAADdXJpAAAAABAAAAAA",
-        "AAAAAAAAAAAAAAAEbWludAAAAAcAAAAAAAAAAnRvAAAAAAATAAAAAAAAAAdtZXNzYWdlAAAAAA4AAAAAAAAACXNpZ25hdHVyZQAAAAAAA+4AAABAAAAAAAAAAAtyZWNvdmVyeV9pZAAAAAAEAAAAAAAAAApwdWJsaWNfa2V5AAAAAAPuAAAAQQAAAAAAAAAFbm9uY2UAAAAAAAAEAAAAAAAAAAhpcGZzX2NpZAAAABAAAAABAAAABg==",
+      new ContractSpec([ "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAABAAAAAAAAAAAAAAABUFkbWluAAAAAAAAAAAAAAAAAAAFTm9uY2UAAAAAAAAAAAAAAAAAAAtOZXh0VG9rZW5JZAAAAAAAAAAAAAAAAAlNYXhUb2tlbnMAAAA=",
+        "AAAAAgAAAAAAAAAAAAAADU5GVFN0b3JhZ2VLZXkAAAAAAAAKAAAAAQAAAAAAAAAJQ2hpcE5vbmNlAAAAAAAAAQAAAAYAAAABAAAAAAAAAAVPd25lcgAAAAAAAAEAAAAGAAAAAQAAAAAAAAAJUHVibGljS2V5AAAAAAAAAQAAAAYAAAABAAAAAAAAABJUb2tlbklkQnlQdWJsaWNLZXkAAAAAAAEAAAPuAAAAQQAAAAEAAAAAAAAAB0JhbGFuY2UAAAAAAQAAABMAAAABAAAAAAAAAAhBcHByb3ZhbAAAAAEAAAAGAAAAAQAAAAAAAAAOQXBwcm92YWxGb3JBbGwAAAAAAAIAAAATAAAAEwAAAAAAAAAAAAAABE5hbWUAAAAAAAAAAAAAAAZTeW1ib2wAAAAAAAAAAAAAAAAAA1VSSQA=",
+        "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAUAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAEbmFtZQAAABAAAAAAAAAABnN5bWJvbAAAAAAAEAAAAAAAAAADdXJpAAAAABAAAAAAAAAACm1heF90b2tlbnMAAAAAAAYAAAAA",
+        "AAAAAAAAAAAAAAAEbWludAAAAAYAAAAAAAAAAnRvAAAAAAATAAAAAAAAAAdtZXNzYWdlAAAAAA4AAAAAAAAACXNpZ25hdHVyZQAAAAAAA+4AAABAAAAAAAAAAAtyZWNvdmVyeV9pZAAAAAAEAAAAAAAAAApwdWJsaWNfa2V5AAAAAAPuAAAAQQAAAAAAAAAFbm9uY2UAAAAAAAAEAAAAAQAAAAY=",
         "AAAAAAAAAAAAAAAHYmFsYW5jZQAAAAABAAAAAAAAAAVvd25lcgAAAAAAABMAAAABAAAABA==",
         "AAAAAAAAAAAAAAAIb3duZXJfb2YAAAABAAAAAAAAAAh0b2tlbl9pZAAAAAYAAAABAAAAEw==",
         "AAAAAAAAAAAAAAAIdHJhbnNmZXIAAAADAAAAAAAAAARmcm9tAAAAEwAAAAAAAAACdG8AAAAAABMAAAAAAAAACHRva2VuX2lkAAAABgAAAAA=",

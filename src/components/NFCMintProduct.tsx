@@ -24,7 +24,6 @@ export const NFCMintProduct = () => {
   const [mintStep, setMintStep] = useState<MintStep>('idle');
   const [ndefData, setNdefData] = useState<string | null>(null);
   const [selectedKeyId, setSelectedKeyId] = useState<string>("1");
-  const [ipfsCid, setIpfsCid] = useState<string>("");
   const [result, setResult] = useState<{
     success: boolean;
     tokenId?: string;
@@ -174,13 +173,8 @@ export const NFCMintProduct = () => {
       // 7. Build and submit transaction using contract client
       setMintStep('calling');
       
-      // Validate IPFS CID is provided
-      if (!ipfsCid || ipfsCid.trim() === '') {
-        throw new Error('IPFS CID is required for minting');
-      }
-      
       // Build transaction using contract client
-      // Contract will verify signature matches public_key and convert public_key to u64 token_id (SEP-50 compliant)
+      // Contract will verify signature matches public_key and assign incrementing token_id
       const tx = await contractClient.mint(
         {
           to: address,
@@ -189,7 +183,6 @@ export const NFCMintProduct = () => {
           recovery_id: recoveryId,
           public_key: Buffer.from(chipPublicKeyBytes), // Chip's public key (65 bytes, uncompressed)
           nonce: nonce,
-          ipfs_cid: ipfsCid.trim(), // IPFS CID for metadata
         },
         {
           publicKey: address,
@@ -413,28 +406,9 @@ export const NFCMintProduct = () => {
         </Box>
       ) : (
         <Box gap="sm" direction="column">
-          {/* IPFS CID Input */}
-          <Box gap="xs" direction="column" style={{ marginBottom: "16px" }}>
-            <Text as="p" size="sm" weight="semi-bold">
-              IPFS CID (for metadata)
-            </Text>
-            <Input
-              id="ipfs-cid-input"
-              type="text"
-              value={ipfsCid}
-              onChange={(e) => setIpfsCid(e.target.value)}
-              placeholder="Qm..."
-              disabled={minting || signing}
-              fieldSize="md"
-            />
-            <Text as="p" size="xs" style={{ color: "#666", marginTop: "4px" }}>
-              Enter the IPFS CID for the token metadata JSON file
-            </Text>
-          </Box>
-
           <Button
             type="submit"
-            disabled={minting || signing || !ipfsCid.trim()}
+            disabled={minting || signing}
             isLoading={minting || signing}
             style={{ marginTop: "12px" }}
             variant="primary"

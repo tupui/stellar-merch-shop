@@ -3,9 +3,8 @@
  */
 
 /**
- * Parse NDEF URL from raw data
- * Handles both TLV-wrapped (Type 2 tags) and raw NDEF (Type 4 tags) formats
- * @param {Buffer} data - Raw NDEF data
+ * Parse NDEF URL from raw NDEF record data
+ * @param {Buffer} data - Raw NDEF record data (format: [flags][typeLength][payloadLength][type][payload])
  * @returns {string|null} - Parsed URL or null if not a URL record
  */
 export function parseNDEFUrl(data) {
@@ -14,36 +13,17 @@ export function parseNDEFUrl(data) {
       return null;
     }
     
-    let ndefData = data;
-    
-    // Check if it's wrapped in TLV (starts with 0x03) - Type 2 tags or Type 4 tags with TLV
-    if (data[0] === 0x03) {
-      let tlvLength = data[1];
-      // Handle extended length (if length byte is 0xFF, next 2 bytes are length)
-      let tlvDataOffset = 2;
-      if (tlvLength === 0xFF) {
-        tlvLength = (data[2] << 8) | data[3];
-        tlvDataOffset = 4;
-      }
-      if (tlvLength === 0) return null; // Empty NDEF message
-      if (tlvLength > data.length - tlvDataOffset) {
-        console.log(`parseNDEFUrl: TLV length (${tlvLength}) exceeds available data (${data.length - tlvDataOffset})`);
-        return null;
-      }
-      ndefData = data.slice(tlvDataOffset, tlvDataOffset + tlvLength);
-      console.log(`parseNDEFUrl: Unwrapped TLV, TLV length: ${tlvLength}, NDEF data length: ${ndefData.length}`);
-    }
-    // Otherwise, assume it's a raw NDEF record (from APDU) - starts with flags byte
+    // Raw NDEF record starts with flags byte
     
     // Parse NDEF record
-    if (ndefData.length < 5) {
-      console.log(`parseNDEFUrl: NDEF data too short: ${ndefData.length} bytes`);
+    if (data.length < 5) {
+      console.log(`parseNDEFUrl: NDEF data too short: ${data.length} bytes`);
       return null;
     }
     
-    console.log(`parseNDEFUrl: Parsing NDEF record (${ndefData.length} bytes), first 20 bytes: ${ndefData.slice(0, 20).toString('hex')}`);
-    const recordHeader = ndefData[0];
-    const typeLength = ndefData[1];
+    console.log(`parseNDEFUrl: Parsing NDEF record (${data.length} bytes), first 20 bytes: ${data.slice(0, 20).toString('hex')}`);
+    const recordHeader = data[0];
+    const typeLength = data[1];
     console.log(`parseNDEFUrl: Record header: 0x${recordHeader.toString(16)}, typeLength: ${typeLength}`);
     const hasIdLength = (recordHeader & 0x08) !== 0; // IL flag (bit 3)
     console.log(`parseNDEFUrl: IL flag: ${hasIdLength}, SR flag: ${(recordHeader & 0x10) !== 0}`);
@@ -55,43 +35,27 @@ export function parseNDEFUrl(data) {
     
     if (recordHeader & 0x10) {
       // Short record (SR=1): 1-byte payload length
-      payloadLength = ndefData[2];
+      payloadLength = data[2];
       typeOffset = 3;
       console.log(`parseNDEFUrl: Short record (SR=1), payloadLength: ${payloadLength}, initial typeOffset: ${typeOffset}`);
       
       // If IL flag is set, there's an ID length byte
       if (hasIdLength) {
-        idLength = ndefData[3];
+        idLength = data[3];
         typeOffset = 4;
         console.log(`parseNDEFUrl: IL flag set, idLength: ${idLength}, typeOffset: ${typeOffset}`);
-      } else {
-        // Backward compatibility: Check if there's an ID length byte even when IL=0
-        // Some old records might have been written with ID length byte
-        // If type byte at offset 3 is 0x00 and next byte is 0x55, assume ID length byte exists
-        if (ndefData.length > 4 && ndefData[3] === 0x00 && ndefData[4] === 0x55) {
-          console.log(`parseNDEFUrl: Detected ID length byte (0x00) even though IL=0, skipping it`);
-          idLength = 0;
-          typeOffset = 4; // Skip the 0x00 byte
-        }
       }
     } else {
       // Long record (SR=0): 3-byte payload length
-      payloadLength = (ndefData[2] << 16) | (ndefData[3] << 8) | ndefData[4];
+      payloadLength = (data[2] << 16) | (data[3] << 8) | data[4];
       typeOffset = 5;
       console.log(`parseNDEFUrl: Long record (SR=0), payloadLength: ${payloadLength}, initial typeOffset: ${typeOffset}`);
       
       // If IL flag is set, there's an ID length byte
       if (hasIdLength) {
-        idLength = ndefData[5];
+        idLength = data[5];
         typeOffset = 6;
         console.log(`parseNDEFUrl: IL flag set, idLength: ${idLength}, typeOffset: ${typeOffset}`);
-      } else {
-        // Backward compatibility: Check if there's an ID length byte even when IL=0
-        if (ndefData.length > 6 && ndefData[5] === 0x00 && ndefData[6] === 0x55) {
-          console.log(`parseNDEFUrl: Detected ID length byte (0x00) even though IL=0, skipping it`);
-          idLength = 0;
-          typeOffset = 6; // Skip the 0x00 byte
-        }
       }
     }
     
@@ -101,21 +65,21 @@ export function parseNDEFUrl(data) {
     }
     
     console.log(`parseNDEFUrl: Calculated typeOffset: ${typeOffset}, payloadLength: ${payloadLength}, idLength: ${idLength}`);
-    const type = ndefData[typeOffset];
+    const type = data[typeOffset];
     console.log(`parseNDEFUrl: Type byte at offset ${typeOffset}: 0x${type.toString(16)} (expected 0x55)`);
     if (type !== 0x55) {
       console.log(`parseNDEFUrl: Not a URL record (type=0x${type.toString(16)}, expected 0x55)`);
-      console.log(`parseNDEFUrl: Data around type offset: ${ndefData.slice(Math.max(0, typeOffset - 2), Math.min(ndefData.length, typeOffset + 5)).toString('hex')}`);
+      console.log(`parseNDEFUrl: Data around type offset: ${data.slice(Math.max(0, typeOffset - 2), Math.min(data.length, typeOffset + 5)).toString('hex')}`);
       return null; // Not a URL record (U = 0x55)
     }
     
     const payloadOffset = typeOffset + typeLength + idLength;
-    if (payloadOffset + payloadLength > ndefData.length) {
-      console.log(`parseNDEFUrl: Payload offset out of bounds (offset=${payloadOffset}, length=${ndefData.length}, payloadLength=${payloadLength})`);
+    if (payloadOffset + payloadLength > data.length) {
+      console.log(`parseNDEFUrl: Payload offset out of bounds (offset=${payloadOffset}, length=${data.length}, payloadLength=${payloadLength})`);
       return null;
     }
     
-    const payload = ndefData.slice(payloadOffset, payloadOffset + payloadLength);
+    const payload = data.slice(payloadOffset, payloadOffset + payloadLength);
     
     if (payload.length === 0) {
       console.log('parseNDEFUrl: Empty payload');
@@ -144,9 +108,10 @@ export function parseNDEFUrl(data) {
 }
 
 /**
- * Create NDEF URL record
+ * Create NDEF URL record (raw format, no TLV wrapper)
+ * For Type 4 tags accessed via APDU, the raw NDEF record is written directly
  * @param {string} url - URL to encode
- * @returns {Buffer} - NDEF record as Buffer
+ * @returns {Buffer} - Raw NDEF record as Buffer (format: [flags][typeLength][payloadLength][type][payload])
  */
 export function createNDEFUrlRecord(url) {
   // Determine URL prefix
@@ -182,37 +147,18 @@ export function createNDEFUrlRecord(url) {
   // Type (U = 0x55)
   const type = 0x55;
   
-  // Build NDEF Record
-  // Note: ID length byte is only included if IL=1 (bit 3 of recordHeader)
-  // Since we always use IL=0, we don't include the ID length byte
-  // This matches the test file format: [flags][typeLength][payloadLength][type][payload]
+  // Build raw NDEF Record (no TLV wrapper)
+  // Format: [flags][typeLength][payloadLength][type][payload]
+  // ID length byte is omitted when IL=0 (per NDEF spec)
   const ndefRecord = Buffer.concat([
     Buffer.from([recordHeader]),
     Buffer.from([typeLength]),
     Buffer.from([payloadLength]),
-    // ID length byte omitted when IL=0 (per NDEF spec)
     Buffer.from([type]),
     Buffer.from([prefix]),
     urlBytes
   ]);
   
-  // NDEF Message TLV
-  const ndefMessageLength = ndefRecord.length;
-  let tlvHeader;
-  
-  if (ndefMessageLength < 255) {
-    // Short form: [0x03][length]
-    tlvHeader = Buffer.from([0x03, ndefMessageLength]);
-  } else {
-    // Extended form: [0x03][0xFF][length high][length low]
-    tlvHeader = Buffer.from([
-      0x03,
-      0xFF,
-      (ndefMessageLength >> 8) & 0xFF,
-      ndefMessageLength & 0xFF
-    ]);
-  }
-  
-  return Buffer.concat([tlvHeader, ndefRecord]);
+  return ndefRecord;
 }
 

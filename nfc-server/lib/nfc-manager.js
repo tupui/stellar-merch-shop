@@ -4,7 +4,6 @@
  */
 
 import { NFC, TAG_ISO_14443_4 } from 'nfc-pcsc';
-import { TAG_ISO_14443_3 } from './constants.js';
 
 export class NFCManager {
   constructor() {

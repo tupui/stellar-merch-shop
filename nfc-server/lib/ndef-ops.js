@@ -3,7 +3,7 @@
  * Handles all NDEF operations via APDU commands
  */
 
-import { NDEF_AID, NDEF_FILE_ID, TAG_ISO_14443_3, TAG_ISO_14443_4 } from './constants.js';
+import { NDEF_AID, NDEF_FILE_ID } from './constants.js';
 import { parseNDEFUrl, createNDEFUrlRecord } from './ndef-parser.js';
 
 export class NDEFOperations {
@@ -213,19 +213,7 @@ export class NDEFOperations {
     }
     
     try {
-      let ndefData;
-      const card = this.nfcManager.getCard();
-      
-      if (card && card.type === TAG_ISO_14443_3) {
-        try {
-          const reader = this.nfcManager.getReader();
-          ndefData = await reader.read(4, 16, 4);
-        } catch (error) {
-          ndefData = await this.readNDEFViaAPDU();
-        }
-      } else {
-        ndefData = await this.readNDEFViaAPDU();
-      }
+      const ndefData = await this.readNDEFViaAPDU();
       
       if (!ndefData || ndefData.length === 0) {
         console.log('readNDEFInternal: No NDEF data read');
@@ -266,19 +254,7 @@ export class NDEFOperations {
           }
         }
         
-        let ndefData;
-        const card = this.nfcManager.getCard();
-        
-        if (card.type === TAG_ISO_14443_3) {
-          try {
-            ndefData = await reader.read(4, 16, 4);
-          } catch (error) {
-            ndefData = await this.readNDEFViaAPDU();
-          }
-        } else {
-          ndefData = await this.readNDEFViaAPDU();
-        }
-        
+        const ndefData = await this.readNDEFViaAPDU();
         const ndefUrl = parseNDEFUrl(ndefData);
         return ndefUrl;
       } catch (error) {
@@ -351,20 +327,8 @@ export class NDEFOperations {
           }
         }
         
-        const card = this.nfcManager.getCard();
-        if (card.type === TAG_ISO_14443_3) {
-          try {
-            const blockSize = 4;
-            const paddedLength = Math.ceil(ndefMessage.length / blockSize) * blockSize;
-            const paddedMessage = Buffer.alloc(paddedLength, 0);
-            ndefMessage.copy(paddedMessage);
-            await reader.write(4, paddedMessage, blockSize);
-          } catch (error) {
-            await this.writeNDEFViaAPDU(ndefMessage);
-          }
-        } else {
-          await this.writeNDEFViaAPDU(ndefMessage);
-        }
+        // Always use APDU write for Type 4 tags
+        await this.writeNDEFViaAPDU(ndefMessage);
         
         // Verify by reading back
         console.log('writeNDEF: Write completed, verifying by reading back...');

@@ -8,13 +8,16 @@ use crate::{errors, events, NFCtoNFTContract, StellarMerchShop, StellarMerchShop
 pub enum DataKey {
     Admin,
     Nonce,
+    NextTokenId,
+    MaxTokens,
 }
 
 #[contracttype]
 pub enum NFTStorageKey {
     ChipNonce(u64),
     Owner(u64),
-    IpfsCid(u64),
+    PublicKey(u64),
+    TokenIdByPublicKey(BytesN<65>),
     Balance(Address),
     Approval(u64),
     ApprovalForAll(Address /* owner */, Address /* operator */),
@@ -23,24 +26,18 @@ pub enum NFTStorageKey {
     URI,
 }
 
-/// Converts a 65-byte public key (BytesN<65>) to an u64 token_id.
-fn bytes65_to_u64(e: &Env, public_key: &BytesN<65>) -> u64 {
-    let hash = e.crypto().sha256(&Bytes::from_array(e, &public_key.to_array()));
-    let hash_bytes = hash.to_array();
-    let mut u64_bytes = [0u8; 8];
-    u64_bytes.copy_from_slice(&hash_bytes[0..8]);
-    u64::from_be_bytes(u64_bytes)
-}
-
-
 #[contractimpl]
 impl NFCtoNFTContract for StellarMerchShop {
 
-    fn __constructor(e: &Env, admin: Address, name: String, symbol: String, uri: String) {
+    fn __constructor(e: &Env, admin: Address, name: String, symbol: String, uri: String, max_tokens: u64) {
         e.storage().instance().set(&DataKey::Admin, &admin);
 
         e.storage().instance().set(&NFTStorageKey::Name, &name);
         e.storage().instance().set(&NFTStorageKey::Symbol, &symbol);
+        e.storage().instance().set(&NFTStorageKey::URI, &uri);
+
+        e.storage().instance().set(&DataKey::MaxTokens, &max_tokens);
+        e.storage().instance().set(&DataKey::NextTokenId, &0u64);
     }
 
     fn mint(
@@ -51,7 +48,6 @@ impl NFCtoNFTContract for StellarMerchShop {
         recovery_id: u32,
         public_key: BytesN<65>,
         nonce: u32,
-        ipfs_cid: String,
     ) -> u64 {
         let mut builder: Bytes = Bytes::new(&e);
         builder.append(&message.clone());
@@ -63,23 +59,36 @@ impl NFCtoNFTContract for StellarMerchShop {
             panic_with_error!(&e, &errors::NonFungibleTokenError::InvalidSignature);
         }
 
-        let token_id = bytes65_to_u64(e, &public_key);
-        let owner_key = NFTStorageKey::Owner(token_id);
-
+        let public_key_lookup = NFTStorageKey::TokenIdByPublicKey(public_key.clone());
         if e
             .storage()
             .persistent()
-            .get::<NFTStorageKey, Address>(&owner_key)
+            .get::<NFTStorageKey, u64>(&public_key_lookup)
             .is_some()
         {
             panic_with_error!(&e, &errors::NonFungibleTokenError::TokenAlreadyMinted);
         }
 
-        e.storage().persistent().set(&owner_key, &to);
+        let token_id: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::NextTokenId)
+            .unwrap();
+        let max_tokens: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::MaxTokens)
+            .unwrap();
+
+        if token_id >= max_tokens {
+            panic_with_error!(&e, &errors::NonFungibleTokenError::TokenIDsAreDepleted);
+        }
+
+        e.storage().instance().set(&DataKey::NextTokenId, &(token_id + 1));
+        e.storage().persistent().set(&NFTStorageKey::Owner(token_id), &to);
+        e.storage().persistent().set(&NFTStorageKey::PublicKey(token_id), &public_key);
+        e.storage().persistent().set(&public_key_lookup, &token_id);
         e.storage().persistent().set(&NFTStorageKey::ChipNonce(token_id), &nonce);
-        
-        // Store only the CID (not the full URI)
-        e.storage().persistent().set(&NFTStorageKey::IpfsCid(token_id), &ipfs_cid);
 
         events::Mint { to, token_id }.publish(&e);
 
@@ -135,33 +144,32 @@ impl NFCtoNFTContract for StellarMerchShop {
             e.storage()
             .instance()
             .get(&NFTStorageKey::Name)
-            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::UnsetMetadata))
+            .unwrap()
     }
 
     fn symbol(e: &Env) -> String {
             e.storage()
             .instance()
             .get(&NFTStorageKey::Symbol)
-            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::UnsetMetadata))
+            .unwrap()
     }
 
     fn token_uri(e: &Env, token_id: u64) -> String {
         // Verify token exists
         let _owner = Self::owner_of(e, token_id);
-        
-        // Retrieve IPFS CID for this token
-        let ipfs_cid: String = e.storage()
-            .persistent()
-            .get(&NFTStorageKey::IpfsCid(token_id))
-            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::UnsetMetadata));
-        
-        // Construct full IPFS URI: ipfs://{cid}
-        let ipfs_prefix = b"ipfs://";
+
+        let base_uri: String = e
+            .storage()
+            .instance()
+            .get(&NFTStorageKey::URI)
+            .unwrap();
+
+        // Construct URI: {base_uri}/{token_id}
         let mut uri_bytes = Bytes::new(e);
-        uri_bytes.append(&Bytes::from_slice(e, ipfs_prefix));
-        uri_bytes.append(&Bytes::from(ipfs_cid.clone()));
-        
-        // Convert Bytes to String
+        uri_bytes.append(&Bytes::from(base_uri));
+        uri_bytes.append(&Bytes::from_slice(e, b"/"));
+        uri_bytes.append(&Bytes::from_array(e, &token_id.to_be_bytes()));
+
         String::from(uri_bytes)
     }
 

@@ -12,6 +12,7 @@ fn create_client<'a>(e: &Env, admin: &Address) -> StellarMerchShopClient<'a> {
             &String::from_str(e, "TestNFT"),
             &String::from_str(e, "TNFT"),
             &String::from_str(e, "https://example.com/token/"),
+            &1000u64, // max_tokens
         ),
     );
     StellarMerchShopClient::new(e, &address)
@@ -102,12 +103,8 @@ fn test_mint_structure() {
         ],
     );
     
-    // Convert public key to u64 token_id (as contract does)
-    let hash = e.crypto().sha256(&Bytes::from_array(&e, &expected_public_key.to_array()));
-    let hash_bytes = hash.to_array();
-    let mut u64_bytes = [0u8; 8];
-    u64_bytes.copy_from_slice(&hash_bytes[0..8]);
-    let expected_token_id_u64 = u64::from_be_bytes(u64_bytes);
+    // With incrementing counter, first mint will have token_id = 0
+    let expected_token_id_u64 = 0u64;
     
     // Test signatures: (r, s) pairs in 64-byte format, parsed from DER signatures from blockchain2go CLI
     // These are the three signatures generated for message hash 53d79d1d1cdcb175a480d34dddf359d3bf9f441d35d5e86b8a3ea78afba9491b
@@ -201,8 +198,7 @@ fn test_mint_structure() {
         // For first signature, actually call mint to test full flow
         // For others, just verify the recovery_id determination works
         if idx == 0 {
-            // Call mint with recovery_id and public_key, plus IPFS CID
-            let ipfs_cid = String::from_str(&e, "QmTest123");
+            // Call mint with recovery_id and public_key
             let returned_token_id = client.mint(
                 &to,
                 &message,
@@ -210,11 +206,10 @@ fn test_mint_structure() {
                 &recovery_id,
                 &expected_public_key,
                 &nonce,
-                &ipfs_cid,
             );
             
-            // Verify contract returned the correct u64 token_id
-            assert_eq!(returned_token_id, expected_token_id_u64, "Signature {} failed: contract did not return expected u64 token_id (recovery_id: {})", idx + 1, recovery_id);
+            // Verify contract returned the correct u64 token_id (should be 0 for first mint)
+            assert_eq!(returned_token_id, expected_token_id_u64, "Signature {} failed: contract did not return expected u64 token_id (recovery_id: {}). Expected: {}, Got: {}", idx + 1, recovery_id, expected_token_id_u64, returned_token_id);
             
             // Verify owner was set correctly
             let owner = client.owner_of(&returned_token_id);

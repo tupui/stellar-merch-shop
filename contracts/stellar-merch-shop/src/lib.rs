@@ -17,7 +17,7 @@ pub struct StellarMerchShop;
 
 pub trait NFCtoNFTContract {
 
-    fn __constructor(e: &Env, admin: Address, name: String, symbol: String, uri: String);
+    fn __constructor(e: &Env, admin: Address, name: String, symbol: String, uri: String, max_tokens: u64);
 
     /// Mint NFT using NFC chip signature.
     ///
@@ -34,12 +34,11 @@ pub trait NFCtoNFTContract {
     /// * `recovery_id` - Recovery ID (0-3) for signature recovery.
     /// * `public_key` - The chip's public key (uncompressed SEC1 format, 65 bytes).
     /// * `nonce` - A nonce to prevent replay attacks.
-    /// * `ipfs_cid` - IPFS CID for the token metadata.
     ///
     /// # Returns
     ///
     /// The u64 token_id (SEP-50 compliant) if signature is valid.
-    fn mint(e: &Env, to: Address, message: Bytes, signature: BytesN<64>, recovery_id: u32, public_key: BytesN<65>, nonce: u32, ipfs_cid: String) -> u64;
+    fn mint(e: &Env, to: Address, message: Bytes, signature: BytesN<64>, recovery_id: u32, public_key: BytesN<65>, nonce: u32) -> u64;
 
     /// Returns the number of tokens in `owner`'s account.
     ///
