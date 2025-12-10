@@ -148,22 +148,12 @@ export const NFCMintProduct = () => {
       // 5. NFC chip signs the hash
       setMintStep('signing');
       const signatureResult = await signWithChip(messageHash, keyId);
-      const { signatureBytes, recoveryId: providedRecoveryId } = signatureResult;
+      const { signatureBytes } = signatureResult;
 
-      // 6. Determine recovery ID to pass to contract
-      // The contract will verify the signature internally
-      // IMPORTANT: Always verify recovery ID, even if chip provides one, to ensure it's correct
+      // 6. Determine recovery ID by trying all 4 possibilities (0-3)
+      // This is quick and ensures we get the correct recovery ID
       setMintStep('recovering');
-      let recoveryId: number;
-      
-      // Always determine recovery ID by trying all possibilities to ensure correctness
-      // The chip-provided recovery ID might be incorrect or based on different assumptions
-      recoveryId = await determineRecoveryId(messageHash, signatureBytes, chipPublicKey);
-      
-      // Log if chip-provided recovery ID differs from verified one (for debugging)
-      if (providedRecoveryId !== undefined && providedRecoveryId !== recoveryId) {
-        console.warn(`Recovery ID mismatch: Chip provided ${providedRecoveryId}, but verified recovery ID is ${recoveryId}. Using verified recovery ID.`);
-      }
+      const recoveryId = await determineRecoveryId(messageHash, signatureBytes, chipPublicKey);
       
       // Ensure recoveryId is a valid integer between 0 and 3
       if (!Number.isInteger(recoveryId) || recoveryId < 0 || recoveryId > 3) {

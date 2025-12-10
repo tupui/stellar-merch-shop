@@ -357,7 +357,7 @@ class WebSocketNFCClient {
             });
             
             // Convert to Soroban format
-            // If server provided recoveryId, use it; otherwise formatSignatureForSoroban will try to determine it
+            // Note: Recovery ID is determined separately by trying all 4 possibilities
             const recoveryIdFromServer = message.data.recoveryId as number | undefined;
             const nfcSig: NFCSignature = {
               r: message.data.r ?? '',
@@ -369,8 +369,7 @@ class WebSocketNFCClient {
             try {
               const sorobanSig = formatSignatureForSoroban(nfcSig);
               console.log('Formatted signature for Soroban:', {
-                signatureLength: sorobanSig.signatureBytes.length,
-                recoveryId: sorobanSig.recoveryId
+                signatureLength: sorobanSig.signatureBytes.length
               });
               resolve(sorobanSig);
             } catch (formatError) {

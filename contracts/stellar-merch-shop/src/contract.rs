@@ -41,7 +41,6 @@ impl NFCtoNFTContract for StellarMerchShop {
 
         e.storage().instance().set(&NFTStorageKey::Name, &name);
         e.storage().instance().set(&NFTStorageKey::Symbol, &symbol);
-        e.storage().instance().set(&NFTStorageKey::URI, &uri);
     }
 
     fn mint(

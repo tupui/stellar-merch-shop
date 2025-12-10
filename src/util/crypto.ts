@@ -148,7 +148,7 @@ export interface NFCSignature {
 
 export interface SorobanSignature {
   signatureBytes: Uint8Array;  // 64 bytes: r (32) + s (32)
-  recoveryId: number;           // 0-3
+  recoveryId?: number;         // 0-3 (optional, should be determined separately)
 }
 
 /**
@@ -222,6 +222,8 @@ function normalizeS(s: Uint8Array): Uint8Array {
 
 /**
  * Convert NFC chip signature format to Soroban format
+ * Only formats the signature bytes (normalizes S, concatenates r+s)
+ * Recovery ID should be determined separately using determineRecoveryId()
  */
 export function formatSignatureForSoroban(signature: NFCSignature): SorobanSignature {
   // Convert hex strings to bytes
@@ -244,30 +246,9 @@ export function formatSignatureForSoroban(signature: NFCSignature): SorobanSigna
   signatureBytes.set(rBytes, 0);
   signatureBytes.set(sBytes, 32);
   
-  // Calculate recovery ID
-  // v can be: 0-3 (raw), 27-30 (Ethereum style), or provided explicitly
-  let recoveryId: number;
-  
-  if (signature.recoveryId !== undefined) {
-    recoveryId = signature.recoveryId;
-  } else if (signature.v >= 27 && signature.v <= 30) {
-    // Ethereum-style v value
-    recoveryId = signature.v - 27;
-  } else if (signature.v >= 0 && signature.v <= 3) {
-    // Raw recovery ID
-    recoveryId = signature.v;
-  } else {
-    throw new Error(`Invalid v value: ${signature.v}`);
-  }
-  
-  // Validate recovery ID range
-  if (recoveryId < 0 || recoveryId > 3) {
-    throw new Error(`Recovery ID out of range: ${recoveryId}, must be 0-3`);
-  }
-  
+  // Return signature bytes only - recovery ID should be determined separately
   return {
-    signatureBytes,
-    recoveryId
+    signatureBytes
   };
 }
 
