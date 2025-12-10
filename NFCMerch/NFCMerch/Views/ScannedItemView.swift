@@ -92,20 +92,17 @@ struct ScannedItemView: View {
                             }
                             .padding(.horizontal)
                             .sheet(isPresented: $showClaimView) {
-                                if let tokenIdStr = item.tokenId, let tokenIdNum = UInt64(tokenIdStr) {
-                                    ClaimView(
-                                        tokenId: tokenIdNum,
-                                        contractId: item.contractId,
-                                        onDismiss: {
-                                            showClaimView = false
-                                            // Reload item details after claiming
-                                            Task {
-                                                await loadItemDetails()
-                                            }
+                                ClaimView(
+                                    contractId: item.contractId,
+                                    onDismiss: {
+                                        showClaimView = false
+                                        // Reload item details after claiming
+                                        Task {
+                                            await loadItemDetails()
                                         }
-                                    )
-                                    .environmentObject(appData)
-                                }
+                                    }
+                                )
+                                .environmentObject(appData)
                             }
                         } else if ownerAddress != nil {
                             // Show Transfer button only if token is claimed and user might be owner

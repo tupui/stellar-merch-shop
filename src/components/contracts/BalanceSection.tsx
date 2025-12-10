@@ -29,17 +29,27 @@ export const BalanceSection = ({ contractId }: BalanceSectionProps) => {
     setError(null);
 
     try {
-      const result = await contractClient.balance({
+      const tx = await contractClient.balance({
         owner: address,
       }, {
         publicKey: address,
       } as any);
 
-      const balanceValue = typeof result === 'bigint' ? Number(result) : result;
+      // Simulate to get the result without sending a transaction
+      const simulation = await tx.simulate();
+      const result = simulation.result;
+      
+      const balanceValue = typeof result === 'bigint' ? Number(result) : (typeof result === 'number' ? result : Number(result));
       setBalance(balanceValue);
     } catch (err) {
       console.error('Balance fetch error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch balance');
+      let errorMessage = "Unknown error";
+      if (err instanceof Error) {
+        errorMessage = err.message || String(err);
+      } else {
+        errorMessage = String(err) || "Failed to fetch balance";
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -72,7 +82,7 @@ export const BalanceSection = ({ contractId }: BalanceSectionProps) => {
       ) : error ? (
         <Box gap="xs" direction="column">
           <Text as="p" size="sm" style={{ color: "#d32f2f" }}>
-            Error: {error}
+            Error: {typeof error === 'string' ? error : String(error || 'Unknown error')}
           </Text>
           <Button
             type="button"

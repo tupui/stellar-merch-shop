@@ -93,40 +93,46 @@ export const NFCMintProduct = () => {
       />
 
       {/* Tab Navigation */}
-      <Box gap="sm" direction="row" style={{ borderBottom: "1px solid #e0e0e0", marginBottom: "24px" }}>
-        <Button
-          type="button"
-          variant={activeTab === 'mint' ? 'primary' : 'tertiary'}
-          size="md"
-          onClick={() => setActiveTab('mint')}
-        >
-          Mint
-        </Button>
-        <Button
-          type="button"
-          variant={activeTab === 'transfer' ? 'primary' : 'tertiary'}
-          size="md"
-          onClick={() => setActiveTab('transfer')}
-        >
-          Transfer
-        </Button>
-        <Button
-          type="button"
-          variant={activeTab === 'claim' ? 'primary' : 'tertiary'}
-          size="md"
-          onClick={() => setActiveTab('claim')}
-        >
-          Claim
-        </Button>
-        <Button
-          type="button"
-          variant={activeTab === 'balance' ? 'primary' : 'tertiary'}
-          size="md"
-          onClick={() => setActiveTab('balance')}
-        >
-          Balance
-        </Button>
-      </Box>
+      <div style={{ borderBottom: "1px solid #e0e0e0", marginBottom: "24px" }}>
+        <Box gap="sm" direction="row">
+          <Button
+            type="button"
+            variant={activeTab === 'mint' ? 'primary' : 'tertiary'}
+            size="md"
+            onClick={() => setActiveTab('mint')}
+            style={activeTab === 'mint' ? { marginBottom: "-1px", borderBottom: "2px solid", borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)" } : undefined}
+          >
+            Mint
+          </Button>
+          <Button
+            type="button"
+            variant={activeTab === 'transfer' ? 'primary' : 'tertiary'}
+            size="md"
+            onClick={() => setActiveTab('transfer')}
+            style={activeTab === 'transfer' ? { marginBottom: "-1px", borderBottom: "2px solid", borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)" } : undefined}
+          >
+            Transfer
+          </Button>
+          <Button
+            type="button"
+            variant={activeTab === 'claim' ? 'primary' : 'tertiary'}
+            size="md"
+            onClick={() => setActiveTab('claim')}
+            style={activeTab === 'claim' ? { marginBottom: "-1px", borderBottom: "2px solid", borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)" } : undefined}
+          >
+            Claim
+          </Button>
+          <Button
+            type="button"
+            variant={activeTab === 'balance' ? 'primary' : 'tertiary'}
+            size="md"
+            onClick={() => setActiveTab('balance')}
+            style={activeTab === 'balance' ? { marginBottom: "-1px", borderBottom: "2px solid", borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)" } : undefined}
+          >
+            Balance
+          </Button>
+        </Box>
+      </div>
 
       {/* Tab Content */}
       {activeTab === 'mint' && (

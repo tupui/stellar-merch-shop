@@ -4,7 +4,6 @@ import stellarsdk
 class ClaimFunction {
     func executeClaim(
         contractId: String,
-        tokenId: UInt64,
         context: FunctionContext,
         nfcService: NFCService,
         blockchainService: BlockchainService,
@@ -43,7 +42,7 @@ class ClaimFunction {
         let sep53Result = try createSEP53Message(
             contractId: contractId,
             functionName: "claim",
-            args: [wallet.address, String(tokenId)] as [Any],
+            args: [wallet.address] as [Any],
             nonce: nonce,
             networkPassphrase: context.networkPassphrase
         )
@@ -98,7 +97,7 @@ class ClaimFunction {
         return FunctionResult(
             success: true,
             message: "Claim successful. Transaction: \(txHash)",
-            data: ["txHash": txHash, "tokenId": String(tokenId)]
+            data: ["txHash": txHash]
         )
     }
     

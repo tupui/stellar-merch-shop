@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct ClaimView: View {
-    let tokenId: UInt64
     let contractId: String
     let onDismiss: () -> Void
     @EnvironmentObject var appData: AppData
@@ -51,17 +50,6 @@ struct ClaimView: View {
             }
             
             VStack(spacing: 15) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Token ID")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text(String(tokenId))
-                        .font(.system(.body, design: .monospaced))
-                        .padding()
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(8)
-                }
-                
                 if let result = result {
                     if result.success {
                         VStack(spacing: 10) {
@@ -162,7 +150,6 @@ struct ClaimView: View {
             currentStep = .reading
             let functionResult = try await claimFunction.executeClaim(
                 contractId: contractId,
-                tokenId: tokenId,
                 context: context,
                 nfcService: appData.nfcService,
                 blockchainService: appData.blockchainService,

@@ -4,7 +4,7 @@
  */
 
 import { useState } from "react";
-import { Button, Text, Code, Input } from "@stellar/design-system";
+import { Button, Text, Code } from "@stellar/design-system";
 import { Box } from "../layout/Box";
 import { ChipProgressIndicator } from "../ChipProgressIndicator";
 import { useWallet } from "../../hooks/useWallet";
@@ -35,7 +35,6 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
   const { contractClient, isReady } = useContractClient(contractId);
   const [claiming, setClaiming] = useState(false);
   const [claimStep, setClaimStep] = useState<ClaimStep>('idle');
-  const [tokenId, setTokenId] = useState("");
   const [result, setResult] = useState<ClaimResult>();
 
   const steps: ClaimStep[] = ['reading', 'signing', 'recovering', 'calling', 'confirming'];
@@ -63,10 +62,6 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
       throw new Error('Contract client is not ready. Please check your contract ID.');
     }
 
-    if (!tokenId.trim()) {
-      throw new Error('Token ID is required');
-    }
-
     setClaiming(true);
     setClaimStep('idle');
     setResult(undefined);
@@ -87,8 +82,6 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
       if (!walletPassphrase) {
         throw new Error('Network passphrase is required');
       }
-
-      const tokenIdNum = BigInt(tokenId.trim());
 
       // Get network-specific settings
       const networkPassphraseToUse = getNetworkPassphrase(walletNetwork, walletPassphrase);
@@ -124,7 +117,7 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
       const { message, messageHash } = await createSEP53Message(
         contractId,
         'claim',
-        [address, tokenIdNum.toString()],
+        [address],
         nonce,
         networkPassphraseToUse
       );
@@ -219,20 +212,6 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
       }}
     >
       <Box gap="sm" direction="column">
-        <Box gap="xs" direction="column">
-          <Text as="p" size="sm" weight="semi-bold">
-            Token ID
-          </Text>
-          <Input
-            type="text"
-            value={tokenId}
-            onChange={(e) => setTokenId(e.target.value)}
-            placeholder="Enter token ID to claim"
-            disabled={claiming}
-            fieldSize="md"
-          />
-        </Box>
-
         {result?.success ? (
           <Box gap="md" style={{ marginTop: "16px" }}>
             <Text as="p" size="lg" style={{ color: "#4caf50" }}>
@@ -247,7 +226,6 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
               size="md"
               onClick={() => {
                 setResult(undefined);
-                setTokenId("");
               }}
               style={{ marginTop: "12px" }}
             >
@@ -276,7 +254,7 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
           <Box gap="sm" direction="column" style={{ marginTop: "12px" }}>
             <Button
               type="submit"
-              disabled={claiming || !isReady || !tokenId.trim()}
+              disabled={claiming || !isReady}
               isLoading={claiming}
               variant="primary"
               size="md"
