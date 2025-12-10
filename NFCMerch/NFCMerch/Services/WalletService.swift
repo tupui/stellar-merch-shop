@@ -179,7 +179,7 @@ class WalletService {
             try storePrivateKeyInSecureEnclave(privateKeyData)
         } catch {
             // If Secure Enclave storage fails, still allow connection but log warning
-            print("Warning: Failed to store private key in Secure Enclave: \(error.localizedDescription)")
+            // Failed to store private key in Secure Enclave - will use Keychain as fallback
         }
         
         // 5. Store public info in UserDefaults

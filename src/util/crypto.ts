@@ -111,12 +111,14 @@ export async function createSEP53Message(
   // Last 4 bytes: nonce value (big-endian)
   view.setUint32(4, nonce, false); // big endian
   
-  // Verify the encoding is correct
-  const expectedNonceHex = nonce === 0 ? '0000000300000000' : 
-    `00000003${nonce.toString(16).padStart(8, '0')}`;
-  const actualNonceHex = bytesToHex(nonceXdrBytes);
-  if (actualNonceHex !== expectedNonceHex) {
-    console.warn(`Nonce XDR encoding mismatch! Expected: ${expectedNonceHex}, Got: ${actualNonceHex}`);
+  // Verify the encoding is correct (development only)
+  if (process.env.NODE_ENV === 'development') {
+    const expectedNonceHex = nonce === 0 ? '0000000300000000' : 
+      `00000003${nonce.toString(16).padStart(8, '0')}`;
+    const actualNonceHex = bytesToHex(nonceXdrBytes);
+    if (actualNonceHex !== expectedNonceHex) {
+      console.warn(`Nonce XDR encoding mismatch! Expected: ${expectedNonceHex}, Got: ${actualNonceHex}`);
+    }
   }
   
   const messageWithNonce = new Uint8Array(message.length + nonceXdrBytes.length);

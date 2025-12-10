@@ -7,7 +7,6 @@ use crate::{errors, events, NFCtoNFTContract, StellarMerchShop, StellarMerchShop
 #[contracttype]
 pub enum DataKey {
     Admin,
-    Nonce,
     NextTokenId,
     MaxTokens,
 }

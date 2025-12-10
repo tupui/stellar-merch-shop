@@ -45,7 +45,6 @@ class NFCService {
         // Check if running on simulator
         #if targetEnvironment(simulator)
         let error = NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "NFC is not available on iOS Simulator. Please run on a physical device."])
-        print("NFC Error: Running on simulator - NFC requires a physical device")
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.delegate?.nfcService(self, didFailWithError: error)
@@ -63,11 +62,6 @@ class NFCService {
             errorMessage += "5. NFC Tag Reading requires a paid Apple Developer account (personal teams don't support this capability)"
             
             let error = NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: errorMessage])
-            print("NFC Error: NFC not available (NFCTagReaderSession.readingAvailable = false)")
-            print("  - Check Settings > General > NFC is enabled")
-            print("  - Verify app has NFC capability in Xcode project")
-            print("  - Verify entitlements file is linked in project settings")
-            print("  - Note: NFC Tag Reading requires a paid Apple Developer account")
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.delegate?.nfcService(self, didFailWithError: error)
@@ -75,15 +69,10 @@ class NFCService {
             return
         }
         
-        print("NFC: ✅ NFCTagReaderSession.readingAvailable = true")
-        
         // Don't start a new session if one is already active
         if session != nil {
-            print("NFC: Session already active")
             return
         }
-        
-        print("NFC: Starting session on main thread...")
         
         // Use NFCTagReaderSession with ISO 14443 polling for ISO 7816 tags
         // This will show the iOS NFC scan UI automatically
@@ -96,7 +85,6 @@ class NFCService {
         )
         
         guard let session = session else {
-            print("NFC Error: Failed to create session - session is nil")
             let error = NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create NFC session"])
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
@@ -106,15 +94,7 @@ class NFCService {
         }
         
         session.alertMessage = "Hold your device near the NFC chip"
-        
-        // Begin session - this should show the iOS NFC scan UI
-        print("NFC: Calling session.begin() - this should show the iOS NFC scan UI")
         session.begin()
-        print("NFC: session.begin() called - if scan UI doesn't appear, check:")
-        print("  1. Device has NFC enabled in Settings")
-        print("  2. App has NFC capability in entitlements")
-        print("  3. Running on physical device (not simulator)")
-        print("  4. Info.plist has correct NFC configuration")
     }
     
     /**
@@ -154,21 +134,15 @@ class NFCService {
     func startSessionAndWaitForTag(completion: @escaping (Result<Void, Error>) -> Void) {
         // If tag already connected, return immediately
         if currentTag != nil {
-            print("NFC: Tag already connected")
             completion(.success(()))
             return
         }
         
-        print("NFC: Starting session and waiting for tag...")
-        
         // Store completion for when tag connects
         tagConnectedCallback = { [weak self] in
-            print("NFC: Tag connected callback triggered")
             if let self = self, self.currentTag != nil {
-                print("NFC: ✅ Tag connection successful!")
                 completion(.success(()))
             } else {
-                print("NFC Error: Tag connection callback but tag is nil")
                 completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Tag connection failed - tag is nil"])))
             }
         }
@@ -177,7 +151,6 @@ class NFCService {
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
             guard let self = self else { return }
             if self.currentTag == nil && self.tagConnectedCallback != nil {
-                print("NFC Error: Timeout waiting for tag connection")
                 self.tagConnectedCallback = nil
                 self.stopSession()
                 completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Timeout waiting for NFC tag. Please try again."])))
@@ -224,14 +197,11 @@ class NFCService {
             return
         }
         
-        print("NFC: Sending APDU command: \(apdu.map { String(format: "%02x", $0) }.joined(separator: " "))")
-        
         tag.sendCommand(
             apdu: apduCommand,
             completionHandler: { (response: Data, sw1: UInt8, sw2: UInt8, error: Error?) in
                 // Completion handler is already called on main queue per Apple's documentation
                 if let error = error {
-                    print("NFC Error: APDU command failed: \(error.localizedDescription)")
                     completion(.failure(error))
                     return
                 }
@@ -240,9 +210,6 @@ class NFCService {
                 var fullResponse = response
                 fullResponse.append(sw1)
                 fullResponse.append(sw2)
-                
-                let statusWord = UInt16(sw1) << 8 | UInt16(sw2)
-                print("NFC: APDU response received, status: 0x\(String(format: "%04x", statusWord))")
                 
                 completion(.success(fullResponse))
             }
@@ -253,26 +220,21 @@ class NFCService {
      * Read public key from chip
      */
     func readPublicKey(completion: @escaping (Result<String, Error>) -> Void) {
-        print("NFC: readPublicKey() called")
-        
         // Reset any existing tag connection
         currentTag = nil
         
         // Start session and wait for tag
         startSessionAndWaitForTag { [weak self] result in
             guard let self = self else {
-                print("NFC Error: Service deallocated")
                 completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Service deallocated"])))
                 return
             }
             
             switch result {
             case .success:
-                print("NFC: Tag connected, starting to read public key...")
                 // Tag connected, now send APDU commands
                 self.readPublicKeyAfterConnection(completion: completion)
             case .failure(let error):
-                print("NFC Error: Failed to connect tag: \(error.localizedDescription)")
                 completion(.failure(error))
             }
         }
@@ -285,11 +247,8 @@ class NFCService {
      * 2. GET_KEY_INFO
      */
     private func readPublicKeyAfterConnection(completion: @escaping (Result<String, Error>) -> Void) {
-        print("NFC: Starting public key read sequence...")
-        
         // Step 1: Select applet (required before any other commands)
         let selectCommand = APDUCommands.selectApplet()
-        print("NFC: Step 1 - Selecting applet...")
         
         sendAPDU(selectCommand) { [weak self] result in
             guard let self = self else {
@@ -302,18 +261,14 @@ class NFCService {
                 let selectAPDU = APDUResponse(rawResponse: selectResponse)
                 guard let apdu = selectAPDU, apdu.isSuccess else {
                     let statusHex = selectAPDU != nil ? String(format: "0x%04x", selectAPDU!.statusWord) : "unknown"
-                    print("NFC Error: SELECT applet failed with status: \(statusHex)")
                     let error = NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to select applet. Status: \(statusHex)"])
                     completion(.failure(error))
                     self.stopSession()
                     return
                 }
                 
-                print("NFC: ✅ Applet selected successfully")
-                
                 // Step 2: Get key info
                 let getKeyInfoCommand = APDUCommands.getKeyInfo()
-                print("NFC: Step 2 - Getting key info...")
                 
                 self.sendAPDU(getKeyInfoCommand) { result in
                     switch result {
@@ -321,7 +276,6 @@ class NFCService {
                         let keyAPDU = APDUResponse(rawResponse: keyResponse)
                         guard let apdu = keyAPDU, apdu.isSuccess else {
                             let statusHex = keyAPDU != nil ? String(format: "0x%04x", keyAPDU!.statusWord) : "unknown"
-                            print("NFC Error: GET_KEY_INFO failed with status: \(statusHex)")
                             let error = NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to get key info. Status: \(statusHex)"])
                             completion(.failure(error))
                             self.stopSession()
@@ -329,27 +283,23 @@ class NFCService {
                         }
                         
                         guard let publicKey = APDUHandler.parsePublicKey(from: apdu.data) else {
-                            print("NFC Error: Failed to parse public key from response")
                             let error = NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to parse public key"])
                             completion(.failure(error))
                             self.stopSession()
                             return
                         }
                         
-                        print("NFC: ✅ Public key read successfully: \(publicKey.prefix(20))...")
                         completion(.success(publicKey))
                         // Stop session after successful read
                         self.stopSession()
                         
                     case .failure(let error):
-                        print("NFC Error: GET_KEY_INFO command failed: \(error.localizedDescription)")
                         completion(.failure(error))
                         self.stopSession()
                     }
                 }
                 
             case .failure(let error):
-                print("NFC Error: SELECT applet command failed: \(error.localizedDescription)")
                 completion(.failure(error))
                 self.stopSession()
             }
@@ -381,12 +331,8 @@ class NFCService {
      * 2. GENERATE_SIGNATURE
      */
     private func signMessageAfterConnection(messageHash: Data, completion: @escaping (Result<(r: String, s: String, recoveryId: Int), Error>) -> Void) {
-        print("NFC: Starting signature generation sequence...")
-        print("NFC: Message hash: \(messageHash.map { String(format: "%02x", $0) }.joined())")
-        
         // Step 1: Select applet (required before any other commands)
         let selectCommand = APDUCommands.selectApplet()
-        print("NFC: Step 1 - Selecting applet...")
         
         sendAPDU(selectCommand) { [weak self] result in
             guard let self = self else {
@@ -399,18 +345,14 @@ class NFCService {
                 let selectAPDU = APDUResponse(rawResponse: selectResponse)
                 guard let apdu = selectAPDU, apdu.isSuccess else {
                     let statusHex = selectAPDU != nil ? String(format: "0x%04x", selectAPDU!.statusWord) : "unknown"
-                    print("NFC Error: SELECT applet failed with status: \(statusHex)")
                     let error = NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to select applet. Status: \(statusHex)"])
                     completion(.failure(error))
                     self.stopSession()
                     return
                 }
                 
-                print("NFC: ✅ Applet selected successfully")
-                
                 // Step 2: Generate signature
                 let signCommand = APDUCommands.generateSignature(messageHash: messageHash)
-                print("NFC: Step 2 - Generating signature...")
                 
                 self.sendAPDU(signCommand) { result in
                     switch result {
@@ -418,7 +360,6 @@ class NFCService {
                         let signAPDU = APDUResponse(rawResponse: signResponse)
                         guard let apdu = signAPDU, apdu.isSuccess else {
                             let statusHex = signAPDU != nil ? String(format: "0x%04x", signAPDU!.statusWord) : "unknown"
-                            print("NFC Error: GENERATE_SIGNATURE failed with status: \(statusHex)")
                             let error = NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to generate signature. Status: \(statusHex)"])
                             completion(.failure(error))
                             self.stopSession()
@@ -426,28 +367,23 @@ class NFCService {
                         }
                         
                         guard let signature = APDUHandler.parseSignature(from: apdu.data) else {
-                            print("NFC Error: Failed to parse signature from response")
                             let error = NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to parse signature"])
                             completion(.failure(error))
                             self.stopSession()
                             return
                         }
                         
-                        print("NFC: ✅ Signature generated successfully")
-                        print("NFC: r: \(signature.r.prefix(20))..., s: \(signature.s.prefix(20))..., recoveryId: \(signature.recoveryId)")
                         completion(.success((r: signature.r, s: signature.s, recoveryId: signature.recoveryId)))
                         // Stop session after successful signature
                         self.stopSession()
                         
                     case .failure(let error):
-                        print("NFC Error: GENERATE_SIGNATURE command failed: \(error.localizedDescription)")
                         completion(.failure(error))
                         self.stopSession()
                     }
                 }
                 
             case .failure(let error):
-                print("NFC Error: SELECT applet command failed: \(error.localizedDescription)")
                 completion(.failure(error))
                 self.stopSession()
             }

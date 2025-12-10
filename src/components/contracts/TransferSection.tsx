@@ -4,7 +4,7 @@
  */
 
 import { useState } from "react";
-import { Button, Text, Code, Input } from "@stellar/design-system";
+import { Button, Text, Input } from "@stellar/design-system";
 import { Box } from "../layout/Box";
 import { ChipProgressIndicator } from "../ChipProgressIndicator";
 import { useWallet } from "../../hooks/useWallet";
@@ -13,7 +13,8 @@ import { useChipAuth } from "../../hooks/useChipAuth";
 import { useContractClient } from "../../hooks/useContractClient";
 import { createSEP53Message } from "../../util/crypto";
 import { getNetworkPassphrase } from "../../contracts/util";
-import { NFCServerNotRunningError, ChipNotPresentError, APDUCommandFailedError, RecoveryIdError } from "../../util/nfcClient";
+import { handleChipError, formatChipError } from "../../util/chipErrorHandler";
+import type { ContractCallOptions } from "../../types/contract";
 
 type TransferStep = 'idle' | 'reading' | 'signing' | 'recovering' | 'calling' | 'confirming';
 
@@ -113,12 +114,12 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
           },
           {
             publicKey: address,
-          } as any
+          } as ContractCallOptions
         );
         currentNonce = (nonceResult.result as number) || 0;
       } catch (err) {
         // If get_nonce fails, default to 0
-        console.log('Could not fetch nonce, defaulting to 0:', err);
+        // Nonce fetch failed, defaulting to 0 (first use)
         currentNonce = 0;
       }
       
@@ -153,7 +154,7 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
         },
         {
           publicKey: address,
-        } as any
+        } as ContractCallOptions
       );
 
       // Sign and send transaction
@@ -168,37 +169,10 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
       await updateBalances();
     } catch (err) {
       console.error('Transfer error:', err);
-
-      let errorMessage = "Unknown error";
-      let actionableGuidance = "";
-
-      if (err instanceof NFCServerNotRunningError) {
-        errorMessage = "NFC Server Not Running";
-        actionableGuidance = "Please start the NFC server in a separate terminal with: bun run nfc-server";
-      } else if (err instanceof ChipNotPresentError) {
-        errorMessage = "No NFC Chip Detected";
-        actionableGuidance = "Please place your Infineon NFC chip on the reader and try again.";
-      } else if (err instanceof APDUCommandFailedError) {
-        errorMessage = "Command Failed";
-        actionableGuidance = "The chip may not be properly positioned. Try repositioning the chip on the reader.";
-      } else if (err instanceof RecoveryIdError) {
-        errorMessage = "Recovery ID Detection Failed";
-        actionableGuidance = "This may indicate a signature mismatch. Please try again.";
-      } else if (err instanceof Error) {
-        errorMessage = err.message || String(err);
-        if (err.message?.includes("timeout") || err.message?.includes("Timeout")) {
-          actionableGuidance = "The operation took too long. Please ensure the chip is positioned correctly and try again.";
-        } else if (err.message?.includes("connection") || err.message?.includes("WebSocket")) {
-          actionableGuidance = "Check that the NFC server is running: bun run nfc-server";
-        }
-      } else {
-        // Handle non-Error objects (e.g., transaction objects)
-        errorMessage = String(err) || "Unknown error occurred";
-      }
-
+      const errorResult = handleChipError(err);
       setResult({
         success: false,
-        error: actionableGuidance ? `${errorMessage}\n\n${actionableGuidance}` : errorMessage,
+        error: formatChipError(errorResult),
       });
     } finally {
       setTransferring(false);

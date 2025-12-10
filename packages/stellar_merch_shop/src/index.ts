@@ -34,11 +34,11 @@ if (typeof window !== 'undefined') {
 export const networks = {
   standalone: {
     networkPassphrase: "Standalone Network ; February 2017",
-    contractId: "CDMKFHPHLZXAAS63KAJKBHJHZPRESL5X4VPWKV7CCEFD5GKWKVNITJSK",
+    contractId: "CBW3A4CQICEFKRXAIWI4SFA2HBMREDLEA4EYM7DX6IVFGQXFO3S32GOR",
   }
 } as const
 
-export type DataKey = {tag: "Admin", values: void} | {tag: "Nonce", values: void} | {tag: "NextTokenId", values: void} | {tag: "MaxTokens", values: void};
+export type DataKey = {tag: "Admin", values: void} | {tag: "NextTokenId", values: void} | {tag: "MaxTokens", values: void};
 
 export type NFTStorageKey = {tag: "ChipNonceByPublicKey", values: readonly [Buffer]} | {tag: "Owner", values: readonly [u64]} | {tag: "PublicKey", values: readonly [u64]} | {tag: "TokenIdByPublicKey", values: readonly [Buffer]} | {tag: "Balance", values: readonly [string]} | {tag: "Approval", values: readonly [u64]} | {tag: "ApprovalForAll", values: readonly [string, string]} | {tag: "Name", values: void} | {tag: "Symbol", values: void} | {tag: "URI", values: void};
 
@@ -314,7 +314,7 @@ export class Client extends ContractClient {
   }
   constructor(public readonly options: ContractClientOptions) {
     super(
-      new ContractSpec([ "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAABAAAAAAAAAAAAAAABUFkbWluAAAAAAAAAAAAAAAAAAAFTm9uY2UAAAAAAAAAAAAAAAAAAAtOZXh0VG9rZW5JZAAAAAAAAAAAAAAAAAlNYXhUb2tlbnMAAAA=",
+      new ContractSpec([ "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAAAwAAAAAAAAAAAAAABUFkbWluAAAAAAAAAAAAAAAAAAALTmV4dFRva2VuSWQAAAAAAAAAAAAAAAAJTWF4VG9rZW5zAAAA",
         "AAAAAgAAAAAAAAAAAAAADU5GVFN0b3JhZ2VLZXkAAAAAAAAKAAAAAQAAAAAAAAAUQ2hpcE5vbmNlQnlQdWJsaWNLZXkAAAABAAAD7gAAAEEAAAABAAAAAAAAAAVPd25lcgAAAAAAAAEAAAAGAAAAAQAAAAAAAAAJUHVibGljS2V5AAAAAAAAAQAAAAYAAAABAAAAAAAAABJUb2tlbklkQnlQdWJsaWNLZXkAAAAAAAEAAAPuAAAAQQAAAAEAAAAAAAAAB0JhbGFuY2UAAAAAAQAAABMAAAABAAAAAAAAAAhBcHByb3ZhbAAAAAEAAAAGAAAAAQAAAAAAAAAOQXBwcm92YWxGb3JBbGwAAAAAAAIAAAATAAAAEwAAAAAAAAAAAAAABE5hbWUAAAAAAAAAAAAAAAZTeW1ib2wAAAAAAAAAAAAAAAAAA1VSSQA=",
         "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAUAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAEbmFtZQAAABAAAAAAAAAABnN5bWJvbAAAAAAAEAAAAAAAAAADdXJpAAAAABAAAAAAAAAACm1heF90b2tlbnMAAAAAAAYAAAAA",
         "AAAAAAAAAAAAAAAEbWludAAAAAUAAAAAAAAAB21lc3NhZ2UAAAAADgAAAAAAAAAJc2lnbmF0dXJlAAAAAAAD7gAAAEAAAAAAAAAAC3JlY292ZXJ5X2lkAAAAAAQAAAAAAAAACnB1YmxpY19rZXkAAAAAA+4AAABBAAAAAAAAAAVub25jZQAAAAAAAAQAAAABAAAABg==",

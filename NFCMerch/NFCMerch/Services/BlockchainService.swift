@@ -4,42 +4,6 @@ import stellarsdk
 /// Service for interacting with Stellar/Soroban blockchain
 class BlockchainService {
     
-    /// Fetch current ledger sequence number from Horizon API
-    func fetchCurrentLedger() async throws -> UInt32 {
-        let urlString = "\(NFCConfig.horizonUrl)/ledgers?order=desc&limit=1"
-        guard let url = URL(string: urlString) else {
-            throw BlockchainError.invalidURL
-        }
-        
-        let (data, response) = try await URLSession.shared.data(from: url)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw BlockchainError.httpError
-        }
-        
-        // Parse JSON response
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let embedded = json["_embedded"] as? [String: Any],
-              let records = embedded["records"] as? [[String: Any]],
-              let firstRecord = records.first,
-              let sequence = firstRecord["sequence"] else {
-            throw BlockchainError.invalidResponse
-        }
-        
-        // Sequence can be string or number
-        if let sequenceStr = sequence as? String, let seq = UInt32(sequenceStr) {
-            return seq
-        } else if let seq = sequence as? UInt32 {
-            return seq
-        } else if let seqInt = sequence as? Int {
-            let seq = UInt32(seqInt)
-            return seq
-        }
-        
-        throw BlockchainError.invalidSequence
-    }
-    
     func buildTransferTransaction(
         contractId: String,
         from: String,
@@ -58,8 +22,8 @@ class BlockchainService {
         let toAddress = try SCAddressXDR(accountId: to)
         
         let args: [SCValXDR] = [
-            try SCValXDR.address(fromAddress),
-            try SCValXDR.address(toAddress),
+            SCValXDR.address(fromAddress),
+            SCValXDR.address(toAddress),
             SCValXDR.u64(tokenId),
             SCValXDR.bytes(message),
             SCValXDR.bytes(signature),
@@ -118,7 +82,7 @@ class BlockchainService {
         let claimantAddress = try SCAddressXDR(accountId: claimant)
         
         let args: [SCValXDR] = [
-            try SCValXDR.address(claimantAddress),
+            SCValXDR.address(claimantAddress),
             SCValXDR.bytes(message),
             SCValXDR.bytes(signature),
             SCValXDR.u32(recoveryId),
@@ -257,10 +221,16 @@ class BlockchainService {
         let assembledTx = try await AssembledTransaction.build(options: assembledOptions)
         
         // Simulate the transaction to get the return value
-        let simulateResponse = await rpcClient.simulateTransaction(transaction: assembledTx.raw!)
+        guard let rawTx = assembledTx.raw else {
+            throw BlockchainError.transactionFailed
+        }
+        let simulateRequest = SimulateTransactionRequest(transaction: rawTx)
+        let simulateResponse = await rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
         
         guard case .success(let simulateResult) = simulateResponse,
-              let returnValue = simulateResult.results?.first?.xdr,
+              let xdrString = simulateResult.results?.first?.xdr,
+              let xdrData = Data(base64Encoded: xdrString),
+              let returnValue = try? XDRDecoder.decode(SCValXDR.self, data: xdrData),
               case .address(let addressXDR) = returnValue else {
             throw BlockchainError.invalidResponse
         }
@@ -273,6 +243,8 @@ class BlockchainService {
             // Contract address - convert to string representation
             let contractIdString = contractIdBytes.wrapped.base64EncodedString()
             return contractIdString
+        @unknown default:
+            throw BlockchainError.invalidResponse
         }
     }
     
@@ -314,10 +286,16 @@ class BlockchainService {
         let assembledTx = try await AssembledTransaction.build(options: assembledOptions)
         
         // Simulate the transaction to get the return value
-        let simulateResponse = await rpcClient.simulateTransaction(transaction: assembledTx.raw!)
+        guard let rawTx = assembledTx.raw else {
+            return 0
+        }
+        let simulateRequest = SimulateTransactionRequest(transaction: rawTx)
+        let simulateResponse = await rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
         
         guard case .success(let simulateResult) = simulateResponse,
-              let returnValue = simulateResult.results?.first?.xdr,
+              let xdrString = simulateResult.results?.first?.xdr,
+              let xdrData = Data(base64Encoded: xdrString),
+              let returnValue = try? XDRDecoder.decode(SCValXDR.self, data: xdrData),
               case .u32(let nonce) = returnValue else {
             // If no nonce found, return 0 (first use)
             return 0

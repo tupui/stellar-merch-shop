@@ -10,9 +10,7 @@ class TransferFunction {
         walletService: WalletService,
         stepCallback: @escaping (TransferView.TransferStep) -> Void
     ) async throws -> FunctionResult {
-        guard let wallet = context.walletConnection as? WalletConnection else {
-            throw TransferError.noWallet
-        }
+        let wallet = context.walletConnection
         
         guard request.from == wallet.address else {
             throw TransferError.incorrectOwner
@@ -21,7 +19,7 @@ class TransferFunction {
         stepCallback(.reading)
         
         // Read chip public key first to get nonce
-        let chipPublicKey = try await readChipPublicKey(nfcService: nfcService)
+        let chipPublicKey = try await NFCServiceHelper.readChipPublicKey(nfcService: nfcService)
         let publicKeyBytes = hexToBytes(chipPublicKey)
         guard publicKeyBytes.count == 65 else {
             throw TransferError.invalidPublicKey
@@ -36,7 +34,7 @@ class TransferFunction {
             )
         } catch {
             // If get_nonce fails, default to 0
-            print("Could not fetch nonce, defaulting to 0: \(error)")
+            // Nonce fetch failed, defaulting to 0 (first use)
             currentNonce = 0
         }
         
@@ -52,7 +50,7 @@ class TransferFunction {
         )
         
         stepCallback(.signing)
-        let signatureResult = try await signWithChip(
+        let signatureResult = try await NFCServiceHelper.signWithChip(
             nfcService: nfcService,
             messageHash: sep53Result.messageHash
         )
@@ -114,49 +112,6 @@ class TransferFunction {
         )
     }
     
-    private func readChipPublicKey(nfcService: NFCService) async throws -> String {
-        return try await withCheckedThrowingContinuation { continuation in
-            nfcService.readPublicKey { result in
-                switch result {
-                case .success(let publicKey):
-                    continuation.resume(returning: publicKey)
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-    }
-    
-    private func signWithChip(
-        nfcService: NFCService,
-        messageHash: Data
-    ) async throws -> (signatureBytes: Data, recoveryId: UInt8) {
-        return try await withCheckedThrowingContinuation { continuation in
-            nfcService.signMessage(messageHash: messageHash) { result in
-                switch result {
-                case .success(let (r, s, recoveryId)):
-                    let rBytes = hexToBytes(r)
-                    let sBytes = hexToBytes(s)
-                    
-                    var signatureBytes = Data()
-                    signatureBytes.append(rBytes)
-                    signatureBytes.append(sBytes)
-                    
-                    guard signatureBytes.count == 64 else {
-                        continuation.resume(throwing: TransferError.invalidSignature)
-                        return
-                    }
-                    
-                    continuation.resume(returning: (
-                        signatureBytes: signatureBytes,
-                        recoveryId: UInt8(recoveryId)
-                    ))
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-    }
 }
 
 enum TransferError: Error, LocalizedError {

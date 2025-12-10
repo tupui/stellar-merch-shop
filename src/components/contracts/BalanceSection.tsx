@@ -4,10 +4,11 @@
  */
 
 import { useState, useEffect } from "react";
-import { Button, Text, Code } from "@stellar/design-system";
+import { Button, Text } from "@stellar/design-system";
 import { Box } from "../layout/Box";
 import { useWallet } from "../../hooks/useWallet";
 import { useContractClient } from "../../hooks/useContractClient";
+import type { ContractCallOptions } from "../../types/contract";
 
 interface BalanceSectionProps {
   contractId: string;
@@ -33,7 +34,7 @@ export const BalanceSection = ({ contractId }: BalanceSectionProps) => {
         owner: address,
       }, {
         publicKey: address,
-      } as any);
+      } as ContractCallOptions);
 
       // Simulate to get the result without sending a transaction
       const simulation = await tx.simulate();

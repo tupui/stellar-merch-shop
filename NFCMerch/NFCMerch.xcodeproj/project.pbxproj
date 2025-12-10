@@ -116,7 +116,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				275968822EE320F4003717D9 /* XCRemoteSwiftPackageReference "stellar-ios-mac-sdk" */,
-				9e7a64c4ae6f45a68f8d66b4 /* XCRemoteSwiftPackageReference "K1" */,
+				9e7a64c4ae6f45a68f8d66b4 /* XCRemoteSwiftPackageReference "swift-secp256k1" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 27B6C98A2EE2E2B400D1377C /* Products */;
