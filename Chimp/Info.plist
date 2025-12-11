@@ -27,6 +27,13 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string></string>
+		<key>UIImageName</key>
+		<string></string>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -44,5 +51,11 @@
 	<array>
 		<string>D2760000041502000100000001</string>
 	</array>
+	<key>STELLAR_NETWORK</key>
+	<string>$(STELLAR_NETWORK)</string>
+	<key>STELLAR_CONTRACT_ID_TESTNET</key>
+	<string>$(STELLAR_CONTRACT_ID_TESTNET)</string>
+	<key>STELLAR_CONTRACT_ID_MAINNET</key>
+	<string>$(STELLAR_CONTRACT_ID_MAINNET)</string>
 </dict>
 </plist>

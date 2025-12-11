@@ -132,3 +132,69 @@ npm run dev:with-nfc
 npm run nfc-server  # Terminal 1
 npm run dev         # Terminal 2
 ```
+
+## iOS App Configuration
+
+The iOS app (`Chimp/`) reads network and contract ID from **Xcode build settings**, which should be synced from the `.env` file.
+
+### Build Configuration (Required)
+
+The app uses build settings that should match your `.env` file:
+
+1. **Open `Chimp.xcodeproj` in Xcode**
+2. **Select the Chimp project** → **Chimp target** → **Build Settings** tab
+3. **Search for `STELLAR`** in the search box
+4. **Set the following values** (matching your `.env` file):
+   - `STELLAR_NETWORK`: `testnet` or `mainnet` (default: `testnet`)
+   - `STELLAR_CONTRACT_ID_TESTNET`: Value from `PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_TESTNET` in `.env`
+   - `STELLAR_CONTRACT_ID_MAINNET`: Value from `PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_MAINNET` in `.env`
+
+**Example values** (from `.env.example`):
+- `STELLAR_NETWORK`: `testnet`
+- `STELLAR_CONTRACT_ID_TESTNET`: `CCLRCNSJUU4PPTBHIW4UXWU5NTCLNZOPZQD4XRERFG2PUNLZ3BKSSFHJ`
+- `STELLAR_CONTRACT_ID_MAINNET`: `CCLRCNSJUU4PPTBHIW4UXWU5NTCLNZOPZQD4XRERFG2PUNLZ3BKSSFHJ`
+
+### Runtime Override (Optional)
+
+The app also supports runtime override via the Settings view:
+1. **Open the iOS app** and navigate to Settings (gear icon in top right)
+2. **Select Network**: Choose between Testnet or Mainnet (overrides build config)
+3. **Enter Contract ID**: Paste the contract ID (overrides build config)
+4. **Save**: Tap the "Save" button to store your settings
+
+Runtime settings take precedence over build configuration and are stored in UserDefaults.
+
+See `Chimp/README_CONFIG.md` for detailed configuration instructions.
+
+### Important: Contract Updates
+
+When deploying a new contract version, you must update the contract ID in **four places**:
+
+1. **Webapp `.env` file**: Update the appropriate network variable:
+   - `PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_TESTNET` for testnet
+   - `PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_MAINNET` for mainnet
+   - `PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_LOCAL` for local development
+
+2. **Webapp `.env.example` file**: Update the example values for other developers
+
+3. **iOS App Build Settings**: Update Xcode build settings:
+   - `STELLAR_CONTRACT_ID_TESTNET` for testnet
+   - `STELLAR_CONTRACT_ID_MAINNET` for mainnet
+   - See `Chimp/README_CONFIG.md` for detailed instructions
+
+4. **iOS App Settings (Optional)**: Can also be updated in the app's Settings view for runtime override
+
+### SEP-53 Flow and ID Recovery
+
+The iOS app implements the SEP-53 standard for contract authentication:
+
+1. **Read Chip**: App reads the public key from the NFC chip
+2. **Get Nonce**: App queries the contract for the current nonce for that public key
+3. **Create Message**: App creates a SEP-53 compliant message (network hash || contract ID || function name || args || nonce)
+4. **Sign with Chip**: NFC chip signs the message hash using secp256k1
+5. **Recovery ID**: App tries recovery IDs 1, 0, 2, 3 in sequence. The contract validates signatures and rejects invalid ones, so the app iterates until finding the correct recovery ID.
+6. **Build Transaction**: App builds the Soroban transaction with all authentication data
+7. **Sign Transaction**: App signs the transaction with the user's wallet private key (stored securely in Keychain)
+8. **Submit**: Transaction is submitted to the network
+
+The private key is stored securely using iOS Keychain with Secure Enclave protection (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`), ensuring it never leaves the device.

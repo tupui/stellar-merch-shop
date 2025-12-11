@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		276DCE0E2EEB0593009A1DA5 /* CoreNFC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 276DCE0D2EEB0593009A1DA5 /* CoreNFC.framework */; };
+		27D11A3F2EEB4B2300A495AC /* stellarsdk in Frameworks */ = {isa = PBXBuildFile; productRef = 27D11A3E2EEB4B2300A495AC /* stellarsdk */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				276DCE0E2EEB0593009A1DA5 /* CoreNFC.framework in Frameworks */,
+				27D11A3F2EEB4B2300A495AC /* stellarsdk in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -82,6 +84,7 @@
 			);
 			name = Chimp;
 			packageProductDependencies = (
+				27D11A3E2EEB4B2300A495AC /* stellarsdk */,
 			);
 			productName = Chimp;
 			productReference = 276DCDF92EEB0063009A1DA5 /* Chimp.app */;
@@ -111,6 +114,9 @@
 			);
 			mainGroup = 276DCDF02EEB0063009A1DA5;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				27D11A3D2EEB4B2300A495AC /* XCRemoteSwiftPackageReference "stellar-ios-mac-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 276DCDFA2EEB0063009A1DA5 /* Products */;
 			projectDirPath = "";
@@ -287,6 +293,9 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = stellarmerchshop.Chimp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STELLAR_CONTRACT_ID_MAINNET = CCLRCNSJUU4PPTBHIW4UXWU5NTCLNZOPZQD4XRERFG2PUNLZ3BKSSFHJ;
+				STELLAR_CONTRACT_ID_TESTNET = CCLRCNSJUU4PPTBHIW4UXWU5NTCLNZOPZQD4XRERFG2PUNLZ3BKSSFHJ;
+				STELLAR_NETWORK = testnet;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -321,6 +330,9 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = stellarmerchshop.Chimp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STELLAR_CONTRACT_ID_MAINNET = CCLRCNSJUU4PPTBHIW4UXWU5NTCLNZOPZQD4XRERFG2PUNLZ3BKSSFHJ;
+				STELLAR_CONTRACT_ID_TESTNET = CCLRCNSJUU4PPTBHIW4UXWU5NTCLNZOPZQD4XRERFG2PUNLZ3BKSSFHJ;
+				STELLAR_NETWORK = testnet;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -353,6 +365,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		27D11A3D2EEB4B2300A495AC /* XCRemoteSwiftPackageReference "stellar-ios-mac-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Soneso/stellar-ios-mac-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.4.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		27D11A3E2EEB4B2300A495AC /* stellarsdk */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 27D11A3D2EEB4B2300A495AC /* XCRemoteSwiftPackageReference "stellar-ios-mac-sdk" */;
+			productName = stellarsdk;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 276DCDF12EEB0063009A1DA5 /* Project object */;
 }

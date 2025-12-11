@@ -15,8 +15,13 @@ class ViewController: UIViewController {
     var publicKeyLabel: UILabel!
     var scanButton: UIButton!
     var signButton: UIButton!
+    var claimButton: UIButton!
+    var addressLabel: UILabel!
+    var settingsButton: UIButton!
     
     var nfc_helper: NFCHelper?
+    var walletService: WalletService!
+    var claimService: ClaimService!
     
     /// Stores the key index selected by the user. Default value is 1
     var selected_keyindex: UInt8  = 0x01
@@ -28,8 +33,22 @@ class ViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
+        walletService = WalletService()
+        claimService = ClaimService()
+        
         ConfigureViews()
         ResetDefaults()
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        
+        // Check for stored wallet after view is in hierarchy
+        if walletService.getStoredWallet() == nil {
+            showLoginView()
+        } else {
+            updateUIForLoggedInState()
+        }
     }
     
     // MARK: - Event handlers
@@ -51,10 +70,67 @@ class ViewController: UIViewController {
         BeginNFCReadSession()
     }
     
+    @objc func ClaimButtonTapped() {
+        print(TAG + ": Claim button clicked")
+        
+        guard walletService.getStoredWallet() != nil else {
+            showLoginView()
+            return
+        }
+        
+        guard !AppConfig.shared.contractId.isEmpty else {
+            let alert = UIAlertController(
+                title: "Contract ID Required",
+                message: "Please set the contract ID in Settings",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+            return
+        }
+        
+        ResetDefaults()
+        publicKeyLabel.text = "Preparing claim...\nHold chip near device"
+        claimButton.isEnabled = false
+        
+        BeginNFCClaimSession()
+    }
+    
+    @objc func SettingsButtonTapped() {
+        let settingsView = SettingsView()
+        settingsView.onLogout = { [weak self] in
+            self?.showLoginView()
+        }
+        let navController = UINavigationController(rootViewController: settingsView)
+        present(navController, animated: true)
+    }
+    
     // MARK: - Private helpers: UI
     /// Configures the user interface elements and assigns the respective event handlers
     func ConfigureViews(){
         view.backgroundColor = .systemBackground
+        title = "Chimp"
+        
+        // Settings button
+        let settingsBtn = UIBarButtonItem(
+            image: UIImage(systemName: "gearshape"),
+            style: .plain,
+            target: self,
+            action: #selector(SettingsButtonTapped)
+        )
+        navigationItem.rightBarButtonItem = settingsBtn
+        settingsButton = UIButton()
+        
+        // Address label
+        let addrLabel = UILabel()
+        addrLabel.text = ""
+        addrLabel.textAlignment = .center
+        addrLabel.numberOfLines = 0
+        addrLabel.font = .systemFont(ofSize: 12, weight: .regular)
+        addrLabel.textColor = .secondaryLabel
+        addrLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(addrLabel)
+        addressLabel = addrLabel
         
         // Create scan button
         let button = UIButton(type: .system)
@@ -80,6 +156,18 @@ class ViewController: UIViewController {
         view.addSubview(signBtn)
         signButton = signBtn
         
+        // Create claim button
+        let claimBtn = UIButton(type: .system)
+        claimBtn.setTitle("Claim NFT", for: .normal)
+        claimBtn.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
+        claimBtn.backgroundColor = .systemPurple
+        claimBtn.setTitleColor(.white, for: .normal)
+        claimBtn.layer.cornerRadius = 10
+        claimBtn.translatesAutoresizingMaskIntoConstraints = false
+        claimBtn.addTarget(self, action: #selector(ClaimButtonTapped), for: .touchUpInside)
+        view.addSubview(claimBtn)
+        claimButton = claimBtn
+        
         // Create label for public key/signature
         let label = UILabel()
         label.text = ""
@@ -92,8 +180,12 @@ class ViewController: UIViewController {
         
         // Layout constraints
         NSLayoutConstraint.activate([
+            addrLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
+            addrLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            addrLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            
             button.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            button.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -80),
+            button.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -100),
             button.widthAnchor.constraint(equalToConstant: 200),
             button.heightAnchor.constraint(equalToConstant: 50),
             
@@ -102,10 +194,42 @@ class ViewController: UIViewController {
             signBtn.widthAnchor.constraint(equalToConstant: 200),
             signBtn.heightAnchor.constraint(equalToConstant: 50),
             
-            label.topAnchor.constraint(equalTo: signBtn.bottomAnchor, constant: 40),
+            claimBtn.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            claimBtn.topAnchor.constraint(equalTo: signBtn.bottomAnchor, constant: 20),
+            claimBtn.widthAnchor.constraint(equalToConstant: 200),
+            claimBtn.heightAnchor.constraint(equalToConstant: 50),
+            
+            label.topAnchor.constraint(equalTo: claimBtn.bottomAnchor, constant: 40),
             label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20)
         ])
+    }
+    
+    func updateUIForLoggedInState() {
+        if let wallet = walletService.getStoredWallet() {
+            addressLabel.text = "Address: \(wallet.address)"
+            claimButton.isHidden = false
+        } else {
+            addressLabel.text = ""
+            claimButton.isHidden = true
+        }
+    }
+    
+    func showLoginView() {
+        // Only show if not already presented
+        guard presentedViewController == nil else {
+            return
+        }
+        
+        let loginView = LoginView()
+        loginView.onLoginSuccess = { [weak self] in
+            self?.dismiss(animated: true) {
+                self?.updateUIForLoggedInState()
+            }
+        }
+        let navController = UINavigationController(rootViewController: loginView)
+        navController.modalPresentationStyle = .fullScreen
+        present(navController, animated: true)
     }
     
     /// Resets the user interface elements to the initial state
@@ -114,6 +238,65 @@ class ViewController: UIViewController {
     }
     
     // MARK: - Private helpers: NFC
+    /// Begins NFC session for claim operation
+    func BeginNFCClaimSession() {
+        guard NFCTagReaderSession.readingAvailable else {
+            let alert = UIAlertController(
+                title: "No NFC",
+                message: "NFC is not available on this device",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+            claimButton.isEnabled = true
+            return
+        }
+        
+        nfc_helper = NFCHelper()
+        nfc_helper?.OnTagEvent = self.OnClaimTagEvent(success:tag:session:error:)
+        nfc_helper?.BeginSession()
+    }
+    
+    /// Handles tag events for claim operation
+    func OnClaimTagEvent(success: Bool, tag: NFCISO7816Tag?,
+                        session: NFCTagReaderSession?, error: String?) {
+        if success {
+            if let tag = tag, let session = session {
+                Task {
+                    do {
+                        let txHash = try await claimService.executeClaim(
+                            tag: tag,
+                            session: session,
+                            keyIndex: selected_keyindex
+                        ) { progress in
+                            DispatchQueue.main.async {
+                                self.publicKeyLabel.text = progress
+                            }
+                        }
+                        
+                        await MainActor.run {
+                            self.publicKeyLabel.text = "Claim Successful!\n\nTransaction: \(txHash)"
+                            self.claimButton.isEnabled = true
+                            session.alertMessage = "Claim successful"
+                            session.invalidate()
+                        }
+                    } catch {
+                        await MainActor.run {
+                            self.publicKeyLabel.text = "Claim Failed:\n\(error.localizedDescription)"
+                            self.claimButton.isEnabled = true
+                            session.invalidate(errorMessage: "Claim failed")
+                        }
+                    }
+                }
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.publicKeyLabel.text = "Failed to detect tag: \(error ?? "Unknown error")"
+                self.claimButton.isEnabled = true
+            }
+        }
+    }
+    
     /// Checks for NFC support and begins a tag reader session
     func BeginNFCReadSession() {
         
