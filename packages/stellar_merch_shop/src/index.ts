@@ -34,7 +34,7 @@ if (typeof window !== 'undefined') {
 export const networks = {
   standalone: {
     networkPassphrase: "Standalone Network ; February 2017",
-    contractId: "CBW3A4CQICEFKRXAIWI4SFA2HBMREDLEA4EYM7DX6IVFGQXFO3S32GOR",
+    contractId: "CAWU4XGWNKTBVUYHG3GYBHYOIRTIRHZAOWSQJBD6AFIVFS4I5IAAUJTB",
   }
 } as const
 
@@ -53,20 +53,6 @@ export const NonFungibleTokenError = {
    */
   201: {message:"IncorrectOwner"},
   /**
-   * Indicates a failure with the `operator`s approval. Used in transfers.
-   */
-  202: {message:"InsufficientApproval"},
-  /**
-   * Indicates a failure with the `approver` of a token to be approved. Used
-   * in approvals.
-   */
-  203: {message:"InvalidApprover"},
-  /**
-   * Indicates an invalid value for `live_until_ledger` when setting
-   * approvals.
-   */
-  204: {message:"InvalidLiveUntilLedger"},
-  /**
    * Indicates overflow when adding two values
    */
   205: {message:"MathOverflow"},
@@ -78,14 +64,6 @@ export const NonFungibleTokenError = {
    * Indicates an invalid amount to batch mint in `consecutive` extension.
    */
   207: {message:"InvalidAmount"},
-  /**
-   * Indicates the token does not exist in owner's list.
-   */
-  208: {message:"TokenNotFoundInOwnerList"},
-  /**
-   * Indicates the token does not exist in global list.
-   */
-  209: {message:"TokenNotFoundInGlobalList"},
   /**
    * Indicates the token was already minted.
    */
@@ -100,10 +78,6 @@ export const NonFungibleTokenError = {
   212: {message:"InvalidRoyaltyAmount"},
   /**
    * Indicates access to unset metadata.
-   */
-  213: {message:"UnsetMetadata"},
-  /**
-   * Indicates the signature does not recover to the provided token_id.
    */
   214: {message:"InvalidSignature"}
 }
@@ -326,7 +300,7 @@ export class Client extends ContractClient {
         "AAAAAAAAAAAAAAAEbmFtZQAAAAAAAAABAAAAEA==",
         "AAAAAAAAAAAAAAAGc3ltYm9sAAAAAAAAAAAAAQAAABA=",
         "AAAAAAAAAAAAAAAJdG9rZW5fdXJpAAAAAAAAAQAAAAAAAAAIdG9rZW5faWQAAAAGAAAAAQAAABA=",
-        "AAAABAAAAAAAAAAAAAAAFU5vbkZ1bmdpYmxlVG9rZW5FcnJvcgAAAAAAAA8AAAAkSW5kaWNhdGVzIGEgbm9uLWV4aXN0ZW50IGB0b2tlbl9pZGAuAAAAEE5vbkV4aXN0ZW50VG9rZW4AAADIAAAAV0luZGljYXRlcyBhbiBlcnJvciByZWxhdGVkIHRvIHRoZSBvd25lcnNoaXAgb3ZlciBhIHBhcnRpY3VsYXIgdG9rZW4uClVzZWQgaW4gdHJhbnNmZXJzLgAAAAAOSW5jb3JyZWN0T3duZXIAAAAAAMkAAABFSW5kaWNhdGVzIGEgZmFpbHVyZSB3aXRoIHRoZSBgb3BlcmF0b3JgcyBhcHByb3ZhbC4gVXNlZCBpbiB0cmFuc2ZlcnMuAAAAAAAAFEluc3VmZmljaWVudEFwcHJvdmFsAAAAygAAAFVJbmRpY2F0ZXMgYSBmYWlsdXJlIHdpdGggdGhlIGBhcHByb3ZlcmAgb2YgYSB0b2tlbiB0byBiZSBhcHByb3ZlZC4gVXNlZAppbiBhcHByb3ZhbHMuAAAAAAAAD0ludmFsaWRBcHByb3ZlcgAAAADLAAAASkluZGljYXRlcyBhbiBpbnZhbGlkIHZhbHVlIGZvciBgbGl2ZV91bnRpbF9sZWRnZXJgIHdoZW4gc2V0dGluZwphcHByb3ZhbHMuAAAAAAAWSW52YWxpZExpdmVVbnRpbExlZGdlcgAAAAAAzAAAAClJbmRpY2F0ZXMgb3ZlcmZsb3cgd2hlbiBhZGRpbmcgdHdvIHZhbHVlcwAAAAAAAAxNYXRoT3ZlcmZsb3cAAADNAAAANkluZGljYXRlcyBhbGwgcG9zc2libGUgYHRva2VuX2lkYHMgYXJlIGFscmVhZHkgaW4gdXNlLgAAAAAAE1Rva2VuSURzQXJlRGVwbGV0ZWQAAAAAzgAAAEVJbmRpY2F0ZXMgYW4gaW52YWxpZCBhbW91bnQgdG8gYmF0Y2ggbWludCBpbiBgY29uc2VjdXRpdmVgIGV4dGVuc2lvbi4AAAAAAAANSW52YWxpZEFtb3VudAAAAAAAAM8AAAAzSW5kaWNhdGVzIHRoZSB0b2tlbiBkb2VzIG5vdCBleGlzdCBpbiBvd25lcidzIGxpc3QuAAAAABhUb2tlbk5vdEZvdW5kSW5Pd25lckxpc3QAAADQAAAAMkluZGljYXRlcyB0aGUgdG9rZW4gZG9lcyBub3QgZXhpc3QgaW4gZ2xvYmFsIGxpc3QuAAAAAAAZVG9rZW5Ob3RGb3VuZEluR2xvYmFsTGlzdAAAAAAAANEAAAAnSW5kaWNhdGVzIHRoZSB0b2tlbiB3YXMgYWxyZWFkeSBtaW50ZWQuAAAAABJUb2tlbkFscmVhZHlNaW50ZWQAAAAAANIAAABBSW5kaWNhdGVzIHRoZSBsZW5ndGggb2YgdGhlIGJhc2UgVVJJIGV4Y2VlZHMgdGhlIG1heGltdW0gYWxsb3dlZC4AAAAAAAAVQmFzZVVyaU1heExlbkV4Y2VlZGVkAAAAAAAA0wAAAEdJbmRpY2F0ZXMgdGhlIHJveWFsdHkgYW1vdW50IGlzIGhpZ2hlciB0aGFuIDEwXzAwMCAoMTAwJSkgYmFzaXMgcG9pbnRzLgAAAAAUSW52YWxpZFJveWFsdHlBbW91bnQAAADUAAAAI0luZGljYXRlcyBhY2Nlc3MgdG8gdW5zZXQgbWV0YWRhdGEuAAAAAA1VbnNldE1ldGFkYXRhAAAAAAAA1QAAAEJJbmRpY2F0ZXMgdGhlIHNpZ25hdHVyZSBkb2VzIG5vdCByZWNvdmVyIHRvIHRoZSBwcm92aWRlZCB0b2tlbl9pZC4AAAAAABBJbnZhbGlkU2lnbmF0dXJlAAAA1g==",
+        "AAAABAAAAAAAAAAAAAAAFU5vbkZ1bmdpYmxlVG9rZW5FcnJvcgAAAAAAAAkAAAAkSW5kaWNhdGVzIGEgbm9uLWV4aXN0ZW50IGB0b2tlbl9pZGAuAAAAEE5vbkV4aXN0ZW50VG9rZW4AAADIAAAAV0luZGljYXRlcyBhbiBlcnJvciByZWxhdGVkIHRvIHRoZSBvd25lcnNoaXAgb3ZlciBhIHBhcnRpY3VsYXIgdG9rZW4uClVzZWQgaW4gdHJhbnNmZXJzLgAAAAAOSW5jb3JyZWN0T3duZXIAAAAAAMkAAAApSW5kaWNhdGVzIG92ZXJmbG93IHdoZW4gYWRkaW5nIHR3byB2YWx1ZXMAAAAAAAAMTWF0aE92ZXJmbG93AAAAzQAAADZJbmRpY2F0ZXMgYWxsIHBvc3NpYmxlIGB0b2tlbl9pZGBzIGFyZSBhbHJlYWR5IGluIHVzZS4AAAAAABNUb2tlbklEc0FyZURlcGxldGVkAAAAAM4AAABFSW5kaWNhdGVzIGFuIGludmFsaWQgYW1vdW50IHRvIGJhdGNoIG1pbnQgaW4gYGNvbnNlY3V0aXZlYCBleHRlbnNpb24uAAAAAAAADUludmFsaWRBbW91bnQAAAAAAADPAAAAJ0luZGljYXRlcyB0aGUgdG9rZW4gd2FzIGFscmVhZHkgbWludGVkLgAAAAASVG9rZW5BbHJlYWR5TWludGVkAAAAAADSAAAAQUluZGljYXRlcyB0aGUgbGVuZ3RoIG9mIHRoZSBiYXNlIFVSSSBleGNlZWRzIHRoZSBtYXhpbXVtIGFsbG93ZWQuAAAAAAAAFUJhc2VVcmlNYXhMZW5FeGNlZWRlZAAAAAAAANMAAABHSW5kaWNhdGVzIHRoZSByb3lhbHR5IGFtb3VudCBpcyBoaWdoZXIgdGhhbiAxMF8wMDAgKDEwMCUpIGJhc2lzIHBvaW50cy4AAAAAFEludmFsaWRSb3lhbHR5QW1vdW50AAAA1AAAACNJbmRpY2F0ZXMgYWNjZXNzIHRvIHVuc2V0IG1ldGFkYXRhLgAAAAAQSW52YWxpZFNpZ25hdHVyZQAAANY=",
         "AAAABQAAAAAAAAAAAAAACFRyYW5zZmVyAAAAAQAAAAh0cmFuc2ZlcgAAAAMAAAAAAAAABGZyb20AAAATAAAAAQAAAAAAAAACdG8AAAAAABMAAAABAAAAAAAAAAh0b2tlbl9pZAAAAAYAAAAAAAAAAg==",
         "AAAABQAAAAAAAAAAAAAAB0FwcHJvdmUAAAAAAQAAAAdhcHByb3ZlAAAAAAQAAAAAAAAACGFwcHJvdmVyAAAAEwAAAAEAAAAAAAAACHRva2VuX2lkAAAABgAAAAEAAAAAAAAACGFwcHJvdmVkAAAAEwAAAAAAAAAAAAAAEWxpdmVfdW50aWxfbGVkZ2VyAAAAAAAABAAAAAAAAAAC",
         "AAAABQAAAAAAAAAAAAAADUFwcHJvdmVGb3JBbGwAAAAAAAABAAAAD2FwcHJvdmVfZm9yX2FsbAAAAAADAAAAAAAAAAVvd25lcgAAAAAAABMAAAABAAAAAAAAAAhvcGVyYXRvcgAAABMAAAAAAAAAAAAAABFsaXZlX3VudGlsX2xlZGdlcgAAAAAAAAQAAAAAAAAAAg==",

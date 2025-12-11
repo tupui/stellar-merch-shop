@@ -6,15 +6,16 @@
 import Foundation
 
 struct APDUCommands {
-    // AID for SECORA Blockchain applet
+    // AID for SECORA Blockchain applet (13 bytes)
+    // Standard AID: D2760000041502000100000001
     static let AID: [UInt8] = [
         0xD2, 0x76, 0x00, 0x00, 0x04, 0x15, 0x02, 0x00,
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00
+        0x01, 0x00, 0x00, 0x00, 0x01
     ]
     
     /**
      * SELECT applet command
-     * 00A40400 0F D276000004150200000000010000
+     * 00A40400 0D D2760000041502000100000001
      */
     static func selectApplet() -> Data {
         var command = Data()

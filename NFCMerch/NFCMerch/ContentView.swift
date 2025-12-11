@@ -4,6 +4,7 @@ struct ContentView: View {
     @EnvironmentObject var appData: AppData
     @Binding var scannedItem: ScannedItem?
     @State private var selectedFunction: ContractFunctionType? = nil
+    @State private var showClaimView = false
     
     enum ContractFunctionType {
         case transfer
@@ -53,6 +54,20 @@ struct ContentView: View {
             
             VStack(spacing: 15) {
                 Button(action: {
+                    showClaimView = true
+                }) {
+                    HStack {
+                        Image(systemName: "hand.raised.fill")
+                        Text("Claim")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+                }
+                
+                Button(action: {
                     selectedFunction = .transfer
                 }) {
                     HStack {
@@ -67,6 +82,15 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal)
+            .sheet(isPresented: $showClaimView) {
+                ClaimView(
+                    contractId: NFCConfig.contractId,
+                    onDismiss: {
+                        showClaimView = false
+                    }
+                )
+                .environmentObject(appData)
+            }
             
             Spacer()
         }

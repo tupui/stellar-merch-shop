@@ -19,7 +19,11 @@ class TransferFunction {
         stepCallback(.reading)
         
         // Read chip public key first to get nonce
-        let chipPublicKey = try await NFCServiceHelper.readChipPublicKey(nfcService: nfcService)
+        let chipPublicKey = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+            nfcService.readPublicKey { result in
+                continuation.resume(with: result)
+            }
+        }
         let publicKeyBytes = hexToBytes(chipPublicKey)
         guard publicKeyBytes.count == 65 else {
             throw TransferError.invalidPublicKey
@@ -50,10 +54,25 @@ class TransferFunction {
         )
         
         stepCallback(.signing)
-        let signatureResult = try await NFCServiceHelper.signWithChip(
-            nfcService: nfcService,
-            messageHash: sep53Result.messageHash
-        )
+        let signatureResult = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(signatureBytes: Data, recoveryId: UInt8), Error>) in
+            nfcService.signMessage(messageHash: sep53Result.messageHash) { result in
+                switch result {
+                case .success(let (r, s, recoveryId)):
+                    let rBytes = hexToBytes(r)
+                    let sBytes = hexToBytes(s)
+                    var signatureBytes = Data()
+                    signatureBytes.append(rBytes)
+                    signatureBytes.append(sBytes)
+                    guard signatureBytes.count == 64 else {
+                        continuation.resume(throwing: TransferError.invalidSignature)
+                        return
+                    }
+                    continuation.resume(returning: (signatureBytes: signatureBytes, recoveryId: UInt8(recoveryId)))
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
         
         stepCallback(.recovering)
         
@@ -66,21 +85,7 @@ class TransferFunction {
         stepCallback(.calling)
         
         // Get KeyPair for building transaction
-        // For local wallets, we can get it from the service
-        // For external wallets, we'll need to handle differently
-        let sourceKeyPair: stellarsdk.KeyPair
-        if case .manual = wallet.type {
-            // For local wallets, get the keypair by signing a dummy transaction
-            // This will use the stored private key
-            let dummyTx = Data("dummy".utf8)
-            let _ = try await walletService.signTransaction(transaction: dummyTx, wallet: wallet)
-            // Create KeyPair from public key - the actual signing happens in signTransaction
-            sourceKeyPair = try stellarsdk.KeyPair(accountId: wallet.address)
-        } else {
-            // For external wallets, create a KeyPair from public key only
-            // The transaction will need to be signed externally
-            sourceKeyPair = try stellarsdk.KeyPair(accountId: wallet.address)
-        }
+        let sourceKeyPair = try stellarsdk.KeyPair(accountId: wallet.address)
         
         let transactionXdr = try await blockchainService.buildTransferTransaction(
             contractId: request.contractId,

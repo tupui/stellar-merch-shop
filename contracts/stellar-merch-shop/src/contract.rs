@@ -143,17 +143,22 @@ impl NFCtoNFTContract for StellarMerchShop {
     ) {
         verify_chip_signature(e, message, signature, recovery_id, public_key.clone(), nonce);
 
-        let stored_public_key: BytesN<65> = e.storage()
+        // Verify the chip public_key corresponds to that specific token_id
+        let token_id_public_key: BytesN<65> = e.storage()
             .persistent()
             .get(&NFTStorageKey::PublicKey(token_id))
             .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::NonExistentToken));
 
-        if stored_public_key != public_key {
+        if token_id_public_key != public_key {
             panic_with_error!(&e, &errors::NonFungibleTokenError::InvalidSignature);
         }
 
         let owner = Self::owner_of(e, token_id);
         if owner != from {
+            panic_with_error!(e, &errors::NonFungibleTokenError::IncorrectOwner);
+        }
+
+        if from == to {
             panic_with_error!(e, &errors::NonFungibleTokenError::IncorrectOwner);
         }
 
