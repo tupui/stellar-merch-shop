@@ -346,12 +346,36 @@ class WebSocketNFCClient {
               this.ws.removeEventListener('message', messageHandler);
             }
             
+            // Validate that we have r and s values
+            if (!message.data.r || !message.data.s) {
+              const errorMsg = `Invalid signature data from server: r=${!!message.data.r}, s=${!!message.data.s}`;
+              console.error(errorMsg, message.data);
+              this.removeListener(handler);
+              if (this.ws) {
+                this.ws.removeEventListener('message', messageHandler);
+              }
+              reject(new Error(errorMsg));
+              return;
+            }
+            
+            // Validate signature component lengths (should be 64 hex chars = 32 bytes each)
+            if (message.data.r.length !== 64 || message.data.s.length !== 64) {
+              const errorMsg = `Invalid signature component lengths: r=${message.data.r.length} (expected 64), s=${message.data.s.length} (expected 64)`;
+              console.error(errorMsg);
+              this.removeListener(handler);
+              if (this.ws) {
+                this.ws.removeEventListener('message', messageHandler);
+              }
+              reject(new Error(errorMsg));
+              return;
+            }
+            
             // Debug logging
             console.log('Received signature from server:', {
-              r: message.data.r?.substring(0, 20) + '...',
-              s: message.data.s?.substring(0, 20) + '...',
-              rLength: message.data.r?.length,
-              sLength: message.data.s?.length,
+              r: message.data.r.substring(0, 20) + '...',
+              s: message.data.s.substring(0, 20) + '...',
+              rLength: message.data.r.length,
+              sLength: message.data.s.length,
               recoveryId: message.data.recoveryId,
               v: message.data.v
             });
@@ -360,16 +384,22 @@ class WebSocketNFCClient {
             // Note: Recovery ID is determined separately by trying all 4 possibilities
             const recoveryIdFromServer = message.data.recoveryId as number | undefined;
             const nfcSig: NFCSignature = {
-              r: message.data.r ?? '',
-              s: message.data.s ?? '',
+              r: message.data.r,
+              s: message.data.s,
               v: recoveryIdFromServer !== undefined ? recoveryIdFromServer : 0, // v is required by interface
               recoveryId: recoveryIdFromServer
             };
             
             try {
               const sorobanSig = formatSignatureForSoroban(nfcSig);
+              // Log first few bytes of signature for debugging (hex)
+              const sigHex = Array.from(sorobanSig.signatureBytes.slice(0, 16))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
               console.log('Formatted signature for Soroban:', {
-                signatureLength: sorobanSig.signatureBytes.length
+                signatureLength: sorobanSig.signatureBytes.length,
+                signaturePreview: sigHex + '...',
+                recoveryIdHint: recoveryIdFromServer
               });
               resolve(sorobanSig);
             } catch (formatError) {

@@ -19,9 +19,11 @@ export const useChipAuth = () => {
 
   const authenticateWithChip = async (
     keyId: number,
-    messageHash: string
+    messageHash: Uint8Array | string
   ): Promise<ChipAuthResult> => {
-    // Ensure we're connected to NFC server
+    // Ensure we're connected to NFC server (check actual state and auto-connect)
+    // The readChip and signWithChip methods will auto-connect, but we can also connect here
+    // to ensure connection is established before starting the auth flow
     if (!connected) {
       await connect();
     }
@@ -31,15 +33,40 @@ export const useChipAuth = () => {
       throw new Error('Key ID must be between 1 and 255');
     }
 
+    // Convert messageHash to Uint8Array if it's a string
+    const messageHashBytes = typeof messageHash === 'string' 
+      ? hexToBytes(messageHash) 
+      : messageHash;
+
+    // Validate message hash length
+    if (messageHashBytes.length !== 32) {
+      throw new Error(`Invalid message hash length: expected 32 bytes, got ${messageHashBytes.length} bytes`);
+    }
+
     // 1. Read chip's public key
     const chipPublicKey = await readChip(keyId);
 
     // 2. NFC chip signs the hash
-    const signatureResult = await signWithChip(messageHash, keyId);
+    const signatureResult = await signWithChip(messageHashBytes, keyId);
     const { signatureBytes } = signatureResult;
 
+    // Validate signature bytes length
+    if (signatureBytes.length !== 64) {
+      throw new Error(`Invalid signature length: expected 64 bytes, got ${signatureBytes.length} bytes`);
+    }
+
     // 3. Determine recovery ID by trying all 4 possibilities (0-3)
-    const recoveryId = await determineRecoveryId(messageHash, signatureBytes, chipPublicKey);
+    let recoveryId: number;
+    try {
+      recoveryId = await determineRecoveryId(messageHashBytes, signatureBytes, chipPublicKey);
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('Failed to determine recovery ID:', errorMsg);
+      console.error('Message hash (hex):', Array.from(messageHashBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
+      console.error('Signature (hex, first 32 bytes):', Array.from(signatureBytes.slice(0, 32)).map(b => b.toString(16).padStart(2, '0')).join(''));
+      console.error('Public key:', chipPublicKey);
+      throw new Error(`Could not determine recovery ID: ${errorMsg}`);
+    }
 
     // Ensure recoveryId is a valid integer between 0 and 3
     if (!Number.isInteger(recoveryId) || recoveryId < 0 || recoveryId > 3) {
@@ -56,6 +83,13 @@ export const useChipAuth = () => {
     if (chipPublicKeyBytes[0] !== 0x04) {
       throw new Error(`Invalid public key format: expected uncompressed key (starting with 0x04), got 0x${chipPublicKeyBytes[0].toString(16).padStart(2, '0')}`);
     }
+
+    console.log('Chip authentication successful:', {
+      recoveryId,
+      publicKeyLength: chipPublicKeyBytes.length,
+      signatureLength: signatureBytes.length,
+      messageHashLength: messageHashBytes.length
+    });
 
     return {
       publicKey: chipPublicKey,

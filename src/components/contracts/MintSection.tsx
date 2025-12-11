@@ -104,6 +104,7 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
 
       // Authenticate with chip
       setMintStep('reading');
+      // messageHash is Uint8Array, authenticateWithChip now accepts both string and Uint8Array
       const authResult = await authenticateWithChip(keyIdNum, messageHash);
 
       // Call contract

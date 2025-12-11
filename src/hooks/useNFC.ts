@@ -39,6 +39,9 @@ export function useNFC(): UseNFCReturn {
 
   // Set up event listeners for connection state
   useEffect(() => {
+    // Check initial connection state
+    setConnected(nfcClient.isConnected());
+
     const handleEvent = (event: { type: string; data?: unknown }) => {
       switch (event.type) {
         case 'connected':
@@ -60,22 +63,28 @@ export function useNFC(): UseNFCReturn {
 
 
   const connect = useCallback(async () => {
-    await nfcClient.connect();
-    setConnected(true);
+    // Only connect if not already connected
+    if (!nfcClient.isConnected()) {
+      await nfcClient.connect();
+    }
+    // Update state based on actual connection (event listener will also update it, but this ensures immediate update)
+    setConnected(nfcClient.isConnected());
   }, []);
 
   const readChip = useCallback(async (keyId?: number): Promise<string> => {
-    if (!connected) {
-      throw new Error('Not connected to NFC server');
+    // Check actual connection state and auto-connect if needed
+    if (!nfcClient.isConnected()) {
+      await connect();
     }
 
     // Let the server handle chip presence checking - it will throw an error if chip not present
     return await nfcClient.readPublicKey(keyId);
-  }, [connected]);
+  }, [connect]);
 
   const signWithChip = useCallback(async (messageDigest: Uint8Array, keyId?: number): Promise<SorobanSignature> => {
-    if (!connected) {
-      throw new Error('Not connected to NFC server');
+    // Check actual connection state and auto-connect if needed
+    if (!nfcClient.isConnected()) {
+      await connect();
     }
 
     setSigning(true);
@@ -85,11 +94,12 @@ export function useNFC(): UseNFCReturn {
     } finally {
       setSigning(false);
     }
-  }, [connected]);
+  }, [connect]);
 
   const readNDEF = useCallback(async (): Promise<string | null> => {
-    if (!connected) {
-      throw new Error('Not connected to NFC server');
+    // Check actual connection state and auto-connect if needed
+    if (!nfcClient.isConnected()) {
+      await connect();
     }
 
     setReadingNDEF(true);
@@ -98,11 +108,12 @@ export function useNFC(): UseNFCReturn {
     } finally {
       setReadingNDEF(false);
     }
-  }, [connected]);
+  }, [connect]);
 
   const writeNDEF = useCallback(async (url: string): Promise<string> => {
-    if (!connected) {
-      throw new Error('Not connected to NFC server');
+    // Check actual connection state and auto-connect if needed
+    if (!nfcClient.isConnected()) {
+      await connect();
     }
 
     setWritingNDEF(true);
@@ -111,11 +122,12 @@ export function useNFC(): UseNFCReturn {
     } finally {
       setWritingNDEF(false);
     }
-  }, [connected]);
+  }, [connect]);
 
   const generateKey = useCallback(async (): Promise<KeyInfo> => {
-    if (!connected) {
-      throw new Error('Not connected to NFC server');
+    // Check actual connection state and auto-connect if needed
+    if (!nfcClient.isConnected()) {
+      await connect();
     }
 
     setGeneratingKey(true);
@@ -124,11 +136,12 @@ export function useNFC(): UseNFCReturn {
     } finally {
       setGeneratingKey(false);
     }
-  }, [connected]);
+  }, [connect]);
 
   const fetchKeyById = useCallback(async (keyId: number): Promise<KeyInfo> => {
-    if (!connected) {
-      throw new Error('Not connected to NFC server');
+    // Check actual connection state and auto-connect if needed
+    if (!nfcClient.isConnected()) {
+      await connect();
     }
 
     setFetchingKey(true);
@@ -137,7 +150,7 @@ export function useNFC(): UseNFCReturn {
     } finally {
       setFetchingKey(false);
     }
-  }, [connected]);
+  }, [connect]);
 
   return {
     connected,
