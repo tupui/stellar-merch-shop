@@ -132,15 +132,37 @@ class NFCService {
         print("✅ NFC: session.begin() called")
         print("🔵 NFC: After begin() - session delegate: \(session.delegate != nil ? "exists" : "nil")")
         
-        // Add a timeout check - if didDetect isn't called within 30 seconds, log a warning
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-            guard let self = self, let session = self.session else { return }
-            print("⚠️ NFC: 30 seconds elapsed - didDetect still not called")
-            print("⚠️ NFC: Session state - delegate exists: \(session.delegate != nil)")
-            print("⚠️ NFC: This might indicate:")
-            print("   1. Chip not being detected (hardware issue)")
-            print("   2. select-identifiers in Info.plist filtering out the tag")
-            print("   3. Polling option mismatch")
+        // Add periodic checks to verify session is still valid
+        var checkCount = 0
+        let maxChecks = 6 // Check every 5 seconds for 30 seconds
+        let checkInterval: DispatchTimeInterval = .seconds(5)
+        
+        func checkSessionState() {
+            checkCount += 1
+            guard let session = self.session else {
+                print("⚠️ NFC: Session is nil after \(checkCount * 5) seconds")
+                return
+            }
+            
+            print("🔵 NFC: Session check \(checkCount)/\(maxChecks) - delegate: \(session.delegate != nil ? "exists" : "nil")")
+            
+            if checkCount < maxChecks {
+                DispatchQueue.main.asyncAfter(deadline: .now() + checkInterval) {
+                    checkSessionState()
+                }
+            } else {
+                print("⚠️ NFC: 30 seconds elapsed - didDetect still not called")
+                print("⚠️ NFC: Session state - delegate exists: \(session.delegate != nil)")
+                print("⚠️ NFC: This might indicate:")
+                print("   1. Chip not being detected (but works with other apps - unlikely)")
+                print("   2. Session configuration issue")
+                print("   3. Polling option or protocol mismatch")
+                print("   4. iOS version specific issue")
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + checkInterval) {
+            checkSessionState()
         }
     }
     
@@ -437,6 +459,33 @@ class NFCService {
         }
     }
     
+    /**
+     * Test method to verify NFC tag detection using NDEF reader
+     * This can help diagnose if the issue is with NFCTagReaderSession specifically
+     */
+    func testNDEFDetection(completion: @escaping (Result<Bool, Error>) -> Void) {
+        guard NFCNDEFReaderSession.readingAvailable else {
+            completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "NFC not available"])))
+            return
+        }
+        
+        print("🔵 NFC: Testing NDEF detection to verify tag can be detected...")
+        let testDelegate = TestNDEFDelegate { [weak self] result in
+            switch result {
+            case .success(let detected):
+                print("🔵 NFC: NDEF test result - tag detected: \(detected)")
+                completion(.success(detected))
+            case .failure(let error):
+                print("🔴 NFC: NDEF test failed: \(error.localizedDescription)")
+                completion(.failure(error))
+            }
+        }
+        
+        let ndefSession = NFCNDEFReaderSession(delegate: testDelegate, queue: nil, invalidateAfterFirstRead: true)
+        ndefSession.alertMessage = "Testing NFC detection - hold chip near device"
+        ndefSession.begin()
+    }
+    
     func readNDEFMessage(completion: @escaping (Result<ScannedItem?, Error>) -> Void) {
         guard NFCTagReaderSession.readingAvailable else {
             completion(.failure(NSError(domain: "NFCService", code: -1, userInfo: [NSLocalizedDescriptionKey: "NFC not available"])))
@@ -446,6 +495,35 @@ class NFCService {
         let ndefSession = NFCNDEFReaderSession(delegate: NDEFSessionDelegate(completion: completion), queue: nil, invalidateAfterFirstRead: true)
         ndefSession.alertMessage = "Hold your device near the NFC tag"
         ndefSession.begin()
+    }
+}
+
+class TestNDEFDelegate: NSObject, NFCNDEFReaderSessionDelegate {
+    let completion: (Result<Bool, Error>) -> Void
+    
+    init(completion: @escaping (Result<Bool, Error>) -> Void) {
+        self.completion = completion
+        super.init()
+    }
+    
+    func readerSession(_ session: NFCNDEFReaderSession, didDetectNDEFs messages: [NFCNDEFMessage]) {
+        print("✅ NFC: NDEF test - tag detected! Messages: \(messages.count)")
+        completion(.success(true))
+    }
+    
+    func readerSession(_ session: NFCNDEFReaderSession, didInvalidateWithError error: Error) {
+        if let nfcError = error as? NFCReaderError,
+           nfcError.code == .readerSessionInvalidationErrorUserCanceled {
+            print("🔵 NFC: NDEF test - user canceled")
+            completion(.success(false))
+        } else {
+            print("🔴 NFC: NDEF test - error: \(error.localizedDescription)")
+            completion(.failure(error))
+        }
+    }
+    
+    func readerSessionDidBecomeActive(_ session: NFCNDEFReaderSession) {
+        print("✅ NFC: NDEF test - session became active")
     }
 }
 

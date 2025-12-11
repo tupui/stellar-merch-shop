@@ -18,8 +18,6 @@ pub enum NFTStorageKey {
     PublicKey(u64),
     TokenIdByPublicKey(BytesN<65>),
     Balance(Address),
-    Approval(u64),
-    ApprovalForAll(Address /* owner */, Address /* operator */),
     Name,
     Symbol,
     URI,

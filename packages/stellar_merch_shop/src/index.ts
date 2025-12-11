@@ -34,13 +34,13 @@ if (typeof window !== 'undefined') {
 export const networks = {
   standalone: {
     networkPassphrase: "Standalone Network ; February 2017",
-    contractId: "CAWU4XGWNKTBVUYHG3GYBHYOIRTIRHZAOWSQJBD6AFIVFS4I5IAAUJTB",
+    contractId: "CCF2GHXDMYAX6DEAM4SSVH7IW4N67HSJRTA4TWDUFM36YDRDQD74AT5N",
   }
 } as const
 
 export type DataKey = {tag: "Admin", values: void} | {tag: "NextTokenId", values: void} | {tag: "MaxTokens", values: void};
 
-export type NFTStorageKey = {tag: "ChipNonceByPublicKey", values: readonly [Buffer]} | {tag: "Owner", values: readonly [u64]} | {tag: "PublicKey", values: readonly [u64]} | {tag: "TokenIdByPublicKey", values: readonly [Buffer]} | {tag: "Balance", values: readonly [string]} | {tag: "Approval", values: readonly [u64]} | {tag: "ApprovalForAll", values: readonly [string, string]} | {tag: "Name", values: void} | {tag: "Symbol", values: void} | {tag: "URI", values: void};
+export type NFTStorageKey = {tag: "ChipNonceByPublicKey", values: readonly [Buffer]} | {tag: "Owner", values: readonly [u64]} | {tag: "PublicKey", values: readonly [u64]} | {tag: "TokenIdByPublicKey", values: readonly [Buffer]} | {tag: "Balance", values: readonly [string]} | {tag: "Name", values: void} | {tag: "Symbol", values: void} | {tag: "URI", values: void};
 
 export const NonFungibleTokenError = {
   /**
@@ -289,7 +289,7 @@ export class Client extends ContractClient {
   constructor(public readonly options: ContractClientOptions) {
     super(
       new ContractSpec([ "AAAAAgAAAAAAAAAAAAAAB0RhdGFLZXkAAAAAAwAAAAAAAAAAAAAABUFkbWluAAAAAAAAAAAAAAAAAAALTmV4dFRva2VuSWQAAAAAAAAAAAAAAAAJTWF4VG9rZW5zAAAA",
-        "AAAAAgAAAAAAAAAAAAAADU5GVFN0b3JhZ2VLZXkAAAAAAAAKAAAAAQAAAAAAAAAUQ2hpcE5vbmNlQnlQdWJsaWNLZXkAAAABAAAD7gAAAEEAAAABAAAAAAAAAAVPd25lcgAAAAAAAAEAAAAGAAAAAQAAAAAAAAAJUHVibGljS2V5AAAAAAAAAQAAAAYAAAABAAAAAAAAABJUb2tlbklkQnlQdWJsaWNLZXkAAAAAAAEAAAPuAAAAQQAAAAEAAAAAAAAAB0JhbGFuY2UAAAAAAQAAABMAAAABAAAAAAAAAAhBcHByb3ZhbAAAAAEAAAAGAAAAAQAAAAAAAAAOQXBwcm92YWxGb3JBbGwAAAAAAAIAAAATAAAAEwAAAAAAAAAAAAAABE5hbWUAAAAAAAAAAAAAAAZTeW1ib2wAAAAAAAAAAAAAAAAAA1VSSQA=",
+        "AAAAAgAAAAAAAAAAAAAADU5GVFN0b3JhZ2VLZXkAAAAAAAAIAAAAAQAAAAAAAAAUQ2hpcE5vbmNlQnlQdWJsaWNLZXkAAAABAAAD7gAAAEEAAAABAAAAAAAAAAVPd25lcgAAAAAAAAEAAAAGAAAAAQAAAAAAAAAJUHVibGljS2V5AAAAAAAAAQAAAAYAAAABAAAAAAAAABJUb2tlbklkQnlQdWJsaWNLZXkAAAAAAAEAAAPuAAAAQQAAAAEAAAAAAAAAB0JhbGFuY2UAAAAAAQAAABMAAAAAAAAAAAAAAAROYW1lAAAAAAAAAAAAAAAGU3ltYm9sAAAAAAAAAAAAAAAAAANVUkkA",
         "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAUAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAEbmFtZQAAABAAAAAAAAAABnN5bWJvbAAAAAAAEAAAAAAAAAADdXJpAAAAABAAAAAAAAAACm1heF90b2tlbnMAAAAAAAYAAAAA",
         "AAAAAAAAAAAAAAAEbWludAAAAAUAAAAAAAAAB21lc3NhZ2UAAAAADgAAAAAAAAAJc2lnbmF0dXJlAAAAAAAD7gAAAEAAAAAAAAAAC3JlY292ZXJ5X2lkAAAAAAQAAAAAAAAACnB1YmxpY19rZXkAAAAAA+4AAABBAAAAAAAAAAVub25jZQAAAAAAAAQAAAABAAAABg==",
         "AAAAAAAAAAAAAAAHYmFsYW5jZQAAAAABAAAAAAAAAAVvd25lcgAAAAAAABMAAAABAAAABA==",

@@ -26,10 +26,16 @@ class NFCSessionDelegate: NSObject, NFCTagReaderSessionDelegate {
         print("🔵 NFC: Service reference in didBecomeActive: \(service != nil ? "exists" : "nil")")
         
         // Set alert message now that session is active (better iOS compatibility)
-        session.alertMessage = "Hold your device near the NFC chip"
-        print("✅ NFC: Alert message set in didBecomeActive")
+        // Use a simple string to avoid any potential issues
+        let alertMsg = "Hold your device near the NFC chip"
+        session.alertMessage = alertMsg
+        print("✅ NFC: Alert message set in didBecomeActive: '\(alertMsg)'")
+        
+        // Verify session is still valid after setting alert message
+        print("🔵 NFC: Session state after alert message - delegate: \(session.delegate != nil ? "exists" : "nil")")
         
         print("🔵 NFC: Session is active, waiting for tag detection...")
+        print("🔵 NFC: Make sure chip is held steady on the back of the device near the top")
     }
     
     func tagReaderSession(_ session: NFCTagReaderSession, didDetect tags: [NFCTag]) {
