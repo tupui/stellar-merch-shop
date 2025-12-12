@@ -14,13 +14,6 @@ import type { MappedBalances } from "../util/wallet";
 
 const signTransaction = wallet.signTransaction.bind(wallet);
 
-/**
- * A good-enough implementation of deepEqual.
- *
- * Used in this file to compare MappedBalances.
- *
- * Should maybe add & use a new dependency instead, if needed elsewhere.
- */
 function deepEqual<T>(a: T, b: T): boolean {
   if (a === b) {
     return true;
@@ -45,8 +38,6 @@ export interface WalletContextType {
   signTransaction: typeof wallet.signTransaction;
   updateBalances: () => Promise<void>;
 }
-
-const POLL_INTERVAL = 1000;
 
 export const WalletContext = // eslint-disable-line react-refresh/only-export-components
   createContext<WalletContextType>({
@@ -92,15 +83,12 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    // Use wallet's network for fetching balances - normalize for consistency
     const normalizedNetwork = currentNetwork ? currentNetwork.toUpperCase() : currentNetwork;
-    
-    // Only fetch if network actually changed (check both normalized network and address)
     const networkKey = `${currentAddress}:${normalizedNetwork}`;
     const lastKey = networkForBalancesRef.current;
     
     if (networkKey === lastKey) {
-      return; // Network and address haven't changed, skip fetch
+      return;
     }
     
     networkForBalancesRef.current = networkKey;
@@ -109,21 +97,16 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
       if (deepEqual(newBalances, prev)) return prev;
       return newBalances;
     });
-  }, []); // Stable callback - uses refs instead of dependencies
+  }, []);
 
-  // Update refs when address or network change, then trigger balance update
   useEffect(() => {
-    // Normalize network for comparison and storage in ref
     const normalizedNetwork = network ? network.toUpperCase() : network;
-    
-    // Check if values actually changed
     const addressChanged = address !== addressRef.current;
     const networkChanged = normalizedNetwork !== networkRef.current;
     
     if (addressChanged || networkChanged) {
       addressRef.current = address;
       networkRef.current = normalizedNetwork;
-      // Only update balances if we have an address
       if (address) {
         void updateBalances();
       } else {
@@ -131,12 +114,10 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
         networkForBalancesRef.current = undefined;
       }
     }
-  }, [address, network, updateBalances]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, network]);
 
   const updateCurrentWalletState = async () => {
-    // There is no way, with StellarWalletsKit, to check if the wallet is
-    // installed/connected/authorized. We need to manage that on our side by
-    // checking our storage item.
     const walletId = storage.getItem("walletId");
     const walletNetwork = storage.getItem("walletNetwork");
     const walletAddr = storage.getItem("walletAddress");
@@ -162,9 +143,6 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
       nullify();
     } else {
       if (popupLock.current) return;
-      // If our storage item is there, then we try to get the user's address &
-      // network from their wallet. Note: `getAddress` MAY open their wallet
-      // extension, depending on which wallet they select!
       try {
         popupLock.current = true;
         wallet.setWallet(walletId);
@@ -175,13 +153,10 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
         ]);
 
         if (!a.address) storage.setItem("walletId", "");
-        // Normalize network values for comparison to prevent oscillation
         const normalizedWalletNetwork = (n.network || "").toUpperCase();
         const normalizedCurrentNetwork = (network || "").toUpperCase();
         const lastNormalizedNetwork = (lastNetworkRef.current || "").toUpperCase();
         
-        // Only update if values actually changed (using normalized comparison)
-        // Check against both current state and last seen value to prevent oscillation
         const addressChanged = a.address !== address;
         const networkChanged = normalizedWalletNetwork !== "" && 
                                normalizedWalletNetwork !== normalizedCurrentNetwork && 
@@ -194,7 +169,6 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
             setAddress(a.address);
           }
           if (networkChanged && n.network) {
-            // Only update if network actually changed
             const normalizedValue = n.network.toUpperCase();
             setNetwork(normalizedValue);
             lastNetworkRef.current = normalizedValue;
@@ -202,17 +176,12 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
           if (passphraseChanged) setNetworkPassphrase(n.networkPassphrase);
         }
         
-        // Always update tracking ref
         if (n.network) {
           const normalizedValue = n.network.toUpperCase();
           lastNetworkRef.current = normalizedValue;
         }
       } catch (e) {
-        // If `getNetwork` or `getAddress` throw errors... sign the user out???
         nullify();
-        // then log the error (instead of throwing) so we have visibility
-        // into the error while working on Scaffold Stellar but we do not
-        // crash the app process
         console.error(e);
       } finally {
         popupLock.current = false;
@@ -221,36 +190,11 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    let isMounted = true;
-
-    // Create recursive polling function to check wallet state continuously
-    const pollWalletState = async () => {
-      if (!isMounted) return;
-
-      await updateCurrentWalletState();
-
-      if (isMounted) {
-        timer = setTimeout(() => void pollWalletState(), POLL_INTERVAL);
-      }
-    };
-
-    // Get the wallet address when the component is mounted for the first time
     startTransition(async () => {
       await updateCurrentWalletState();
-      // Start polling after initial state is loaded
-
-      if (isMounted) {
-        timer = setTimeout(() => void pollWalletState(), POLL_INTERVAL);
-      }
     });
-
-    // Clear the timeout and stop polling when the component unmounts
-    return () => {
-      isMounted = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- it SHOULD only run once per component mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const contextValue = useMemo(
     () => ({

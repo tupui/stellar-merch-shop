@@ -97,41 +97,21 @@ export async function createSEP53Message(
     offset += part.length;
   }
   
-  // Append nonce to message before hashing
-  // IMPORTANT: Must match contract's nonce.to_xdr() which produces 8 bytes:
-  // - 4 bytes: ScVal U32 discriminant (0x00000003 = 3)
-  // - 4 bytes: big-endian u32 value
-  // 
-  // Contract does: builder.append(&message) then builder.append(&nonce.to_xdr(&e))
-  // So we need: message || nonce_xdr_bytes
   const nonceXdrBytes = new Uint8Array(8);
   const view = new DataView(nonceXdrBytes.buffer);
-  // First 4 bytes: ScVal U32 discriminant = 3 (big-endian)
-  view.setUint32(0, 3, false); // big endian = 0x00000003
-  // Last 4 bytes: nonce value (big-endian)
-  view.setUint32(4, nonce, false); // big endian
+  view.setUint32(0, 3, false);
+  view.setUint32(4, nonce, false);
   
-  // Verify the encoding is correct (development only)
-  if (process.env.NODE_ENV === 'development') {
-    const expectedNonceHex = nonce === 0 ? '0000000300000000' : 
-      `00000003${nonce.toString(16).padStart(8, '0')}`;
-    const actualNonceHex = bytesToHex(nonceXdrBytes);
-    if (actualNonceHex !== expectedNonceHex) {
-      console.warn(`Nonce XDR encoding mismatch! Expected: ${expectedNonceHex}, Got: ${actualNonceHex}`);
-    }
-  }
   
   const messageWithNonce = new Uint8Array(message.length + nonceXdrBytes.length);
   messageWithNonce.set(message, 0);
   messageWithNonce.set(nonceXdrBytes, message.length);
   
-  // Hash the message with nonce for signature
-  // This should match: contract's sha256(builder) where builder = message || nonce.to_xdr()
   const messageHash = await sha256(messageWithNonce);
   
   return {
-    message: message, // Return message without nonce
-    messageHash: messageHash
+    message,
+    messageHash
   };
 }
 

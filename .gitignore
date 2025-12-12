@@ -41,3 +41,4 @@ src/contracts/*
 
 .idea
 .cursor
+.build

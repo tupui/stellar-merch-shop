@@ -131,13 +131,13 @@ class WebSocketNFCClient {
           try {
             const message = JSON.parse(event.data as string) as WebSocketMessage;
             this.handleMessage(message);
-          } catch (error) {
-            console.error('Failed to parse WebSocket message:', error);
+          } catch {
+            // Ignore parse errors
           }
         };
 
-        this.ws.onerror = (event) => {
-          console.error('WebSocket error:', event);
+        this.ws.onerror = () => {
+          // Error handled via onclose
         };
 
         this.ws.onclose = (event) => {
@@ -149,7 +149,6 @@ class WebSocketNFCClient {
           };
           
           // Log close details for debugging
-          console.log('WebSocket closed:', { code: event.code, reason: event.reason, wasClean: event.wasClean });
           
           // If connection closed during initial connect attempt and not normal closure, reject
           if (event.code !== 1000 && event.code !== 1001) {
@@ -346,7 +345,6 @@ class WebSocketNFCClient {
               this.ws.removeEventListener('message', messageHandler);
             }
             
-            // Validate that we have r and s values
             if (!message.data.r || !message.data.s) {
               const errorMsg = `Invalid signature data from server: r=${!!message.data.r}, s=${!!message.data.s}`;
               console.error(errorMsg, message.data);
@@ -358,7 +356,6 @@ class WebSocketNFCClient {
               return;
             }
             
-            // Validate signature component lengths (should be 64 hex chars = 32 bytes each)
             if (message.data.r.length !== 64 || message.data.s.length !== 64) {
               const errorMsg = `Invalid signature component lengths: r=${message.data.r.length} (expected 64), s=${message.data.s.length} (expected 64)`;
               console.error(errorMsg);
@@ -370,40 +367,18 @@ class WebSocketNFCClient {
               return;
             }
             
-            // Debug logging
-            console.log('Received signature from server:', {
-              r: message.data.r.substring(0, 20) + '...',
-              s: message.data.s.substring(0, 20) + '...',
-              rLength: message.data.r.length,
-              sLength: message.data.s.length,
-              recoveryId: message.data.recoveryId,
-              v: message.data.v
-            });
-            
-            // Convert to Soroban format
-            // Note: Recovery ID is determined separately by trying all 4 possibilities
             const recoveryIdFromServer = message.data.recoveryId as number | undefined;
             const nfcSig: NFCSignature = {
               r: message.data.r,
               s: message.data.s,
-              v: recoveryIdFromServer !== undefined ? recoveryIdFromServer : 0, // v is required by interface
+              v: recoveryIdFromServer !== undefined ? recoveryIdFromServer : 0,
               recoveryId: recoveryIdFromServer
             };
             
             try {
               const sorobanSig = formatSignatureForSoroban(nfcSig);
-              // Log first few bytes of signature for debugging (hex)
-              const sigHex = Array.from(sorobanSig.signatureBytes.slice(0, 16))
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('');
-              console.log('Formatted signature for Soroban:', {
-                signatureLength: sorobanSig.signatureBytes.length,
-                signaturePreview: sigHex + '...',
-                recoveryIdHint: recoveryIdFromServer
-              });
               resolve(sorobanSig);
             } catch (formatError) {
-              console.error('Failed to format signature:', formatError);
               reject(formatError instanceof Error ? formatError : new Error('Failed to format signature'));
             }
           } else if (message.type === 'error') {
@@ -440,7 +415,6 @@ class WebSocketNFCClient {
     return new Promise((resolve, reject) => {
       // Auto-connect if not connected
       if (!this.isConnected()) {
-        console.log('readNDEF: Not connected, attempting to connect...');
         this.connect()
           .then(() => {
             // Retry after connection
@@ -483,16 +457,13 @@ class WebSocketNFCClient {
     const messageHandler = (event: MessageEvent) => {
       try {
         const message = JSON.parse(event.data as string) as WebSocketMessage;
-        console.log('readNDEF: Received message:', message);
         if (message.type === 'ndef-read' && message.success) {
-          console.log('readNDEF: Success, URL:', message.data?.url);
           this.removeListener(handler);
           if (this.ws) {
             this.ws.removeEventListener('message', messageHandler);
           }
           resolve(message.data?.url || null);
         } else if (message.type === 'error') {
-          console.error('readNDEF: Error received:', message.error);
           this.removeListener(handler);
           if (this.ws) {
             this.ws.removeEventListener('message', messageHandler);
@@ -500,7 +471,6 @@ class WebSocketNFCClient {
           reject(new Error(message.error ?? 'Unknown error'));
         }
       } catch (error) {
-        console.error('readNDEF: Parse error:', error);
         // Ignore parse errors
       }
     };
@@ -527,7 +497,6 @@ class WebSocketNFCClient {
     return new Promise((resolve, reject) => {
       // Auto-connect if not connected
       if (!this.isConnected()) {
-        console.log('generateKey: Not connected, attempting to connect...');
         this.connect()
           .then(() => {
             this.performGenerateKey(resolve, reject);
@@ -583,7 +552,6 @@ class WebSocketNFCClient {
           reject(new Error(message.error ?? 'Unknown error'));
         }
       } catch (error) {
-        console.error('generateKey: Parse error:', error);
         // Ignore parse errors
       }
     };
@@ -613,7 +581,6 @@ class WebSocketNFCClient {
     return new Promise((resolve, reject) => {
       // Auto-connect if not connected
       if (!this.isConnected()) {
-        console.log('fetchKeyById: Not connected, attempting to connect...');
         this.connect()
           .then(() => {
             if (!this.currentStatus.chipPresent) {
@@ -680,7 +647,6 @@ class WebSocketNFCClient {
           reject(new Error(message.error ?? 'Unknown error'));
         }
       } catch (error) {
-        console.error('fetchKeyById: Parse error:', error);
         // Ignore parse errors
       }
     };
@@ -833,8 +799,8 @@ class WebSocketNFCClient {
     this.listeners.forEach(listener => {
       try {
         listener(event);
-      } catch (error) {
-        console.error('Error in event listener:', error);
+      } catch {
+        // Ignore listener errors
       }
     });
   }

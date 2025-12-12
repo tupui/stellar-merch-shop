@@ -76,18 +76,43 @@ class WalletService {
         )
     }
     
-    /// Sign a transaction XDR
-    /// - Parameter transactionXdr: Transaction XDR as Data
-    /// - Returns: Signed transaction XDR as Data
+    /// Sign a transaction (modifies the transaction object in place)
+    /// - Parameter transaction: Transaction object to sign (will be modified)
     /// - Throws: WalletError if signing fails
-    func signTransaction(_ transactionXdr: Data) async throws -> Data {
+    func signTransaction(_ transaction: Transaction) async throws {
         guard let privateKeyString = try secureKeyStorage.loadPrivateKey() else {
             throw WalletError.noWalletConfigured
         }
         
         let keyPair = try KeyPair(secretSeed: privateKeyString)
-        let transactionXdrString = transactionXdr.base64EncodedString()
-        let stellarTransaction = try Transaction(envelopeXdr: transactionXdrString)
+        
+        print("WalletService: Validating transaction before signing...")
+        
+        // Validate transaction has required operations
+        guard !transaction.operations.isEmpty else {
+            print("WalletService: ERROR: Transaction has no operations")
+            throw WalletError.signingFailed
+        }
+        print("WalletService: Transaction has \(transaction.operations.count) operation(s)")
+        
+        // Note: Time bounds and fee validation are already done in buildClaimTransaction
+        // We just validate basic transaction state here
+        
+        // Validate transaction fee (minimum 100 stroops per operation)
+        let minFeePerOperation: Int64 = 100
+        let requiredMinFee = minFeePerOperation * Int64(transaction.operations.count)
+        if transaction.fee < requiredMinFee {
+            print("WalletService: ERROR: Transaction fee (\(transaction.fee)) is below minimum (\(requiredMinFee))")
+            throw WalletError.signingFailed
+        }
+        print("WalletService: Transaction fee validated: \(transaction.fee) stroops (minimum: \(requiredMinFee))")
+        
+        // Validate source account matches wallet (if we can access it)
+        // Note: Transaction.sourceAccount is a protocol, so we can't directly compare
+        // The transaction was built with the correct source account, so we trust it
+        print("WalletService: Source account validation skipped (transaction built with correct account)")
+        
+        print("WalletService: Transaction validation passed, signing...")
         
         // Determine network
         let network: Network
@@ -98,13 +123,10 @@ class WalletService {
             network = .public
         }
         
-        try stellarTransaction.sign(keyPair: keyPair, network: network)
-        
-        guard let signedXdr = stellarTransaction.xdrEncoded else {
-            throw WalletError.signingFailed
-        }
-        
-        return Data(base64Encoded: signedXdr) ?? Data()
+        // Sign the transaction (modifies the transaction object in place)
+        // Matching test script: transaction.sign(keyPair: keyPair, network: .testnet)
+        try transaction.sign(keyPair: keyPair, network: network)
+        print("WalletService: Transaction signed successfully")
     }
     
     /// Logout - clear stored wallet
@@ -125,11 +147,11 @@ enum WalletError: Error, LocalizedError {
         case .invalidSecretKey(let message):
             return message
         case .keychainError:
-            return "Failed to access Keychain"
+            return "Failed to access secure storage. Please ensure your device supports secure storage and try again."
         case .noWalletConfigured:
-            return "No wallet configured"
+            return "No wallet configured. Please login with your secret key first."
         case .signingFailed:
-            return "Transaction signing failed"
+            return "Transaction signing failed. Please ensure your wallet is properly configured and try again."
         }
     }
 }

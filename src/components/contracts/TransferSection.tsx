@@ -3,7 +3,7 @@
  * Handles NFT transfer with NFC chip authentication
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button, Text, Input } from "@stellar/design-system";
 import { Box } from "../layout/Box";
 import { ChipProgressIndicator } from "../ChipProgressIndicator";
@@ -16,7 +16,7 @@ import { getNetworkPassphrase } from "../../contracts/util";
 import { handleChipError, formatChipError } from "../../util/chipErrorHandler";
 import type { ContractCallOptions } from "../../types/contract";
 
-type TransferStep = 'idle' | 'reading' | 'signing' | 'recovering' | 'calling' | 'confirming';
+type TransferStep = 'idle' | 'scanning' | 'reading' | 'signing' | 'recovering' | 'calling' | 'submitting' | 'confirming';
 
 interface TransferSectionProps {
   keyId: string;
@@ -39,11 +39,16 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
   const [recipientAddress, setRecipientAddress] = useState("");
   const [tokenId, setTokenId] = useState("");
   const [result, setResult] = useState<TransferResult>();
+  const [countdown, setCountdown] = useState<number | undefined>(undefined);
 
-  const steps: TransferStep[] = ['reading', 'signing', 'recovering', 'calling', 'confirming'];
+  const chipSteps: TransferStep[] = ['scanning', 'reading', 'signing', 'recovering'];
+  const blockchainSteps: TransferStep[] = ['calling', 'submitting', 'confirming'];
+  const allSteps: TransferStep[] = [...chipSteps, ...blockchainSteps];
 
   const getStepMessage = (step: TransferStep): string => {
     switch (step) {
+      case 'scanning':
+        return 'Scanning chip...';
       case 'reading':
         return 'Reading chip public key...';
       case 'signing':
@@ -51,13 +56,55 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
       case 'recovering':
         return 'Determining recovery ID...';
       case 'calling':
-        return 'Calling contract...';
+        return 'Preparing transaction...';
+      case 'submitting':
+        return 'Sending to blockchain...';
       case 'confirming':
         return 'Confirming transaction...';
       default:
         return 'Processing...';
     }
   };
+
+  const isChipOperation = (step: TransferStep): boolean => {
+    return chipSteps.includes(step);
+  };
+
+  const isBlockchainOperation = (step: TransferStep): boolean => {
+    return blockchainSteps.includes(step);
+  };
+
+  // Handle 3-second forced scanning period
+  useEffect(() => {
+    if (transferStep === 'scanning') {
+      setCountdown(3);
+      const interval = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev === undefined || prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      const timeout = setTimeout(() => {
+        clearInterval(interval);
+        setCountdown(undefined);
+        // After 3 seconds, proceed to reading
+        if (transferStep === 'scanning') {
+          setTransferStep('reading');
+        }
+      }, 3000);
+
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+      };
+    } else {
+      setCountdown(undefined);
+    }
+  }, [transferStep]);
 
   const handleTransfer = async () => {
     if (!address) return;
@@ -76,11 +123,11 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
     setTransferring(true);
     setTransferStep('idle');
     setResult(undefined);
+    setCountdown(undefined);
 
     try {
       // Ensure we're connected to NFC server
       if (!connected) {
-        setTransferStep('reading');
         await connect();
       }
 
@@ -99,7 +146,17 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
       // Get network-specific settings
       const networkPassphraseToUse = getNetworkPassphrase(walletNetwork, walletPassphrase);
       
-      // Read chip public key first to get nonce
+      // Start with forced 3-second scanning period
+      setTransferStep('scanning');
+      
+      // Wait for 3-second scanning period to complete
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          resolve();
+        }, 3000);
+      });
+      
+      // Now proceed with chip operations
       setTransferStep('reading');
       const chipPublicKeyHex = await readChip(keyIdNum);
       const { hexToBytes } = await import("../../util/crypto");
@@ -139,7 +196,8 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
       setTransferStep('signing');
       const authResult = await authenticateWithChip(keyIdNum, messageHash);
 
-      // Call contract
+      // Chip operations complete - close scanning UI
+      // Now move to blockchain operations
       setTransferStep('calling');
       const tx = await contractClient.transfer(
         {
@@ -158,8 +216,12 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
       );
 
       // Sign and send transaction
-      setTransferStep('confirming');
+      setTransferStep('submitting');
       await tx.signAndSend({ signTransaction, force: true });
+
+      setTransferStep('confirming');
+      // Wait a moment for confirmation
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       setResult({
         success: true,
@@ -177,6 +239,7 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
     } finally {
       setTransferring(false);
       setTransferStep('idle');
+      setCountdown(undefined);
     }
   };
 
@@ -277,11 +340,37 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
             </Button>
 
             {transferring && transferStep !== 'idle' && (
-              <ChipProgressIndicator
-                step={transferStep}
-                stepMessage={getStepMessage(transferStep)}
-                steps={steps}
-              />
+              <>
+                {isChipOperation(transferStep) && (
+                  <ChipProgressIndicator
+                    step={transferStep}
+                    stepMessage={getStepMessage(transferStep)}
+                    steps={chipSteps}
+                    countdown={countdown}
+                  />
+                )}
+                {isBlockchainOperation(transferStep) && (
+                  <Box gap="xs" style={{ marginTop: "12px", padding: "12px", backgroundColor: "#e3f2fd", borderRadius: "4px" }}>
+                    <Text as="p" size="sm" weight="semi-bold" style={{ color: "#1976d2" }}>
+                      {getStepMessage(transferStep)}
+                    </Text>
+                    <Box gap="xs" direction="row" style={{ marginTop: "4px" }}>
+                      {blockchainSteps.map((stepName) => (
+                        <div
+                          key={stepName}
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            backgroundColor: blockchainSteps.indexOf(transferStep) >= blockchainSteps.indexOf(stepName) ? "#1976d2" : "#ddd",
+                            transition: "background-color 0.3s ease",
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+              </>
             )}
           </Box>
         )}

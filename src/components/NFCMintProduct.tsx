@@ -47,12 +47,10 @@ export const NFCMintProduct = () => {
       const url = await readNDEF();
       setNdefData(url);
     } catch (err) {
-      console.error('handleReadNDEF: Error:', err);
       if (err instanceof ChipNotPresentError) {
         setNdefData(null);
         alert('No NFC chip detected. Please place the chip on the reader.');
       } else {
-        console.error('Failed to read NDEF:', err);
         alert(`Failed to read NDEF: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
     }

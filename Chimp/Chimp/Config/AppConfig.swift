@@ -54,21 +54,35 @@ class AppConfig {
         get {
             // Check for runtime override in UserDefaults
             if let overrideId = UserDefaults.standard.string(forKey: contractIdKey), !overrideId.isEmpty {
-                return overrideId
+                return overrideId.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             
             // Fall back to build configuration based on current network
             let buildKey = currentNetwork == .testnet ? buildContractIdTestnetKey : buildContractIdMainnetKey
             if let buildContractId = Bundle.main.infoDictionary?[buildKey] as? String, !buildContractId.isEmpty {
-                return buildContractId
+                return buildContractId.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             
             return "" // No contract ID configured
         }
         set {
             // Store in UserDefaults for runtime override
-            UserDefaults.standard.set(newValue, forKey: contractIdKey)
+            UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: contractIdKey)
         }
+    }
+    
+    /// Validates contract ID format
+    /// Contract IDs should be 56 characters, start with 'C', and be valid base32
+    func validateContractId(_ contractId: String) -> Bool {
+        // Stellar contract IDs are 56 characters, start with 'C'
+        guard contractId.count == 56,
+              contractId.hasPrefix("C") else {
+            return false
+        }
+        
+        // Check if it's valid base32 (alphanumeric, no ambiguous characters)
+        let validChars = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")
+        return contractId.uppercased().unicodeScalars.allSatisfy { validChars.contains($0) }
     }
     
     /// RPC URL based on current network

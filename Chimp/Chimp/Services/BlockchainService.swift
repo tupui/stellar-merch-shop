@@ -20,9 +20,16 @@ class BlockchainService {
         print("BlockchainService: getNonce called")
         print("BlockchainService: RPC URL: \(config.rpcUrl)")
         print("BlockchainService: Contract ID: \(contractId)")
+        print("BlockchainService: Contract ID length: \(contractId.count)")
         print("BlockchainService: Network: \(config.currentNetwork)")
         print("BlockchainService: Public key length: \(publicKey.count)")
         print("BlockchainService: Source account: \(sourceKeyPair.accountId)")
+        
+        // Validate contract ID format
+        guard config.validateContractId(contractId) else {
+            print("BlockchainService: ERROR: Invalid contract ID format: \(contractId)")
+            throw BlockchainError.invalidResponse
+        }
         
         let rpcClient = SorobanServer(endpoint: config.rpcUrl)
         
@@ -36,12 +43,14 @@ class BlockchainService {
         }
         
         // Use the actual source account keypair (must exist on network)
+        print("BlockchainService: Creating ClientOptions with contractId: '\(contractId)'")
         let clientOptions = ClientOptions(
             sourceAccountKeyPair: sourceKeyPair,
             contractId: contractId,
             network: network,
             rpcUrl: config.rpcUrl
         )
+        print("BlockchainService: ClientOptions created successfully")
         
         let args: [SCValXDR] = [
             SCValXDR.bytes(publicKey)
@@ -54,16 +63,32 @@ class BlockchainService {
             arguments: args
         )
         
-        // Build and simulate the transaction
+        // Build the transaction using SDK's AssembledTransaction
+        // For read operations, we need to simulate to get the result
         print("BlockchainService: Building transaction...")
-        let assembledTx = try await AssembledTransaction.build(options: assembledOptions)
+        print("BlockchainService: Method: get_nonce")
+        print("BlockchainService: Arguments count: \(args.count)")
+        let assembledTx: AssembledTransaction
+        do {
+            // AssembledTransaction.build() handles:
+            // - Transaction building
+            // - Fee calculation
+            // - Time bounds
+            assembledTx = try await AssembledTransaction.build(options: assembledOptions)
+            print("BlockchainService: Transaction built successfully")
+        } catch {
+            print("BlockchainService: ERROR building transaction: \(error)")
+            // If build fails, return 0 (first use, contract might not have nonce set yet)
+            return 0
+        }
         
+        // For read operations, simulate to get the result
         guard let rawTx = assembledTx.raw else {
             print("BlockchainService: ERROR: No raw transaction")
             return 0
         }
         
-        print("BlockchainService: Simulating transaction...")
+        // Simulate to get the return value
         let simulateRequest = SimulateTransactionRequest(transaction: rawTx)
         let simulateResponse = await rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
         
@@ -86,6 +111,88 @@ class BlockchainService {
         }
     }
     
+    /// Determine recovery ID by simulating the claim call with each recovery ID (0-3)
+    /// This is done offline (simulation only, no transaction submission)
+    /// Matches JS implementation: determineRecoveryId() in src/util/crypto.ts
+    /// - Parameters:
+    ///   - contractId: Contract ID
+    ///   - claimant: Claimant address
+    ///   - message: SEP-53 message (without nonce)
+    ///   - signature: ECDSA signature (64 bytes: r + s)
+    ///   - publicKey: Chip public key (65 bytes, uncompressed)
+    ///   - nonce: Nonce value
+    ///   - sourceKeyPair: Source account keypair
+    /// - Returns: The correct recovery ID (0-3)
+    /// - Throws: BlockchainError if no matching recovery ID found
+    func determineRecoveryId(
+        contractId: String,
+        claimant: String,
+        message: Data,
+        signature: Data,
+        publicKey: Data,
+        nonce: UInt32,
+        sourceKeyPair: KeyPair
+    ) async throws -> UInt32 {
+        print("BlockchainService: determineRecoveryId called (offline, using contract simulation)")
+        
+        // Try each recovery ID (0-3) - matching JS: for (let recoveryId = 0; recoveryId <= 3; recoveryId++)
+        let recoveryIds: [UInt32] = [0, 1, 2, 3]
+        var errors: [String] = []
+        
+        for recoveryId in recoveryIds {
+            print("BlockchainService: Trying recovery ID \(recoveryId)...")
+            
+            do {
+                // Try to build the transaction (this will simulate it)
+                // If simulation succeeds without invalidSignature error, this recovery ID is correct
+                _ = try await buildClaimTransaction(
+                    contractId: contractId,
+                    claimant: claimant,
+                    message: message,
+                    signature: signature,
+                    recoveryId: recoveryId,
+                    publicKey: publicKey,
+                    nonce: nonce,
+                    sourceAccount: sourceKeyPair.accountId,
+                    sourceKeyPair: sourceKeyPair
+                )
+                
+                // If we get here, simulation succeeded - this is the correct recovery ID
+                print("BlockchainService: Recovery ID \(recoveryId) is correct (simulation succeeded)")
+                return recoveryId
+            } catch {
+                // Check if it's an invalidSignature error (wrong recovery ID)
+                if case BlockchainError.contractError(let contractError) = error,
+                   case .invalidSignature = contractError {
+                    let errorMsg = "Recovery ID \(recoveryId): InvalidSignature"
+                    errors.append(errorMsg)
+                    print("BlockchainService: Recovery ID \(recoveryId) failed with invalidSignature, trying next...")
+                    continue
+                }
+                
+                // Check for crypto errors (invalid recovery ID)
+                let errorString = "\(error)"
+                if errorString.contains("InvalidInput") ||
+                   errorString.contains("recovery failed") ||
+                   errorString.contains("recover_key_ecdsa") {
+                    let errorMsg = "Recovery ID \(recoveryId): InvalidInput"
+                    errors.append(errorMsg)
+                    print("BlockchainService: Recovery ID \(recoveryId) failed with crypto error, trying next...")
+                    continue
+                }
+                
+                // Other errors (like tokenAlreadyClaimed) mean the signature is valid
+                // but there's a different issue - this recovery ID is correct
+                print("BlockchainService: Recovery ID \(recoveryId) simulation failed with non-signature error, assuming this recovery ID is correct")
+                return recoveryId
+            }
+        }
+        
+        // If we get here, no recovery ID worked
+        let errorDetails = errors.isEmpty ? "" : "\nErrors encountered:\n\(errors.joined(separator: "\n"))"
+        throw BlockchainError.transactionFailed
+    }
+    
     /// Build claim transaction
     /// - Parameters:
     ///   - contractId: Contract ID
@@ -97,7 +204,7 @@ class BlockchainService {
     ///   - nonce: Nonce value
     ///   - sourceAccount: Source account address
     ///   - sourceKeyPair: Source account keypair for signing
-    /// - Returns: Transaction XDR as Data
+    /// - Returns: Transaction object (not signed)
     /// - Throws: BlockchainError if building fails
     func buildClaimTransaction(
         contractId: String,
@@ -109,15 +216,22 @@ class BlockchainService {
         nonce: UInt32,
         sourceAccount: String,
         sourceKeyPair: KeyPair
-    ) async throws -> Data {
+    ) async throws -> Transaction {
         print("BlockchainService: buildClaimTransaction called")
         print("BlockchainService: Contract ID: \(contractId)")
+        print("BlockchainService: Contract ID length: \(contractId.count)")
         print("BlockchainService: Claimant: \(claimant)")
         print("BlockchainService: Message length: \(message.count)")
         print("BlockchainService: Signature length: \(signature.count)")
         print("BlockchainService: Recovery ID: \(recoveryId)")
         print("BlockchainService: Public key length: \(publicKey.count)")
         print("BlockchainService: Nonce: \(nonce)")
+        
+        // Validate contract ID format
+        guard config.validateContractId(contractId) else {
+            print("BlockchainService: ERROR: Invalid contract ID format: \(contractId)")
+            throw BlockchainError.invalidResponse
+        }
         
         // Create SCValXDR arguments
         let claimantAddress = try SCAddressXDR(accountId: claimant)
@@ -143,12 +257,14 @@ class BlockchainService {
         print("BlockchainService: Network: \(network)")
         print("BlockchainService: RPC URL: \(config.rpcUrl)")
         
+        print("BlockchainService: Creating ClientOptions with contractId: '\(contractId)'")
         let clientOptions = ClientOptions(
             sourceAccountKeyPair: sourceKeyPair,
             contractId: contractId,
             network: network,
             rpcUrl: config.rpcUrl
         )
+        print("BlockchainService: ClientOptions created successfully")
         
         // Create assembled transaction options
         let assembledOptions = AssembledTransactionOptions(
@@ -158,44 +274,77 @@ class BlockchainService {
             arguments: args
         )
         
-        // Build the transaction
+        // Build the transaction using SDK's AssembledTransaction
+        // This automatically handles: simulation, fee calculation, time bounds, and validation
         print("BlockchainService: Building claim transaction...")
+        print("BlockchainService: Method: claim")
+        print("BlockchainService: Arguments count: \(args.count)")
         do {
+            // AssembledTransaction.build() handles:
+            // - Transaction building
+            // - Simulation (to verify it will succeed)
+            // - Fee calculation
+            // - Time bounds setting
+            // - Resource limits
             let assembledTx = try await AssembledTransaction.build(options: assembledOptions)
+            print("BlockchainService: Transaction built and simulated successfully")
             
-            // Get the transaction XDR
-            guard let rawTx = assembledTx.raw,
-                  let xdrString = rawTx.xdrEncoded else {
-                print("BlockchainService: ERROR: Failed to get XDR from transaction")
+            // Get the Transaction object (not signed yet)
+            // The SDK has already validated everything during build()
+            guard let rawTx = assembledTx.raw else {
+                print("BlockchainService: ERROR: Failed to get Transaction from AssembledTransaction")
                 throw BlockchainError.transactionFailed
             }
             
-            print("BlockchainService: Transaction built successfully")
-            return Data(base64Encoded: xdrString) ?? Data()
+            print("BlockchainService: Transaction ready for signing")
+            print("BlockchainService: Transaction operations count: \(rawTx.operations.count)")
+            print("BlockchainService: Transaction fee: \(rawTx.fee) stroops")
+            
+            // Return the Transaction object - SDK has already handled all validation
+            return rawTx
         } catch {
             print("BlockchainService: ERROR building transaction: \(error)")
-            if let sorobanError = error as? SorobanRpcRequestError {
-                print("BlockchainService: SorobanRpcRequestError code: \(sorobanError)")
+            print("BlockchainService: Error type: \(type(of: error))")
+            
+            // Check if it's a contract error
+            let errorString = "\(error)"
+            if let contractError = ContractError.fromErrorString(errorString) {
+                print("BlockchainService: Contract error detected: \(contractError)")
+                throw BlockchainError.contractError(contractError)
             }
+            
             throw error
         }
     }
     
     /// Submit transaction to network
-    /// - Parameter transactionXdr: Signed transaction XDR
+    /// - Parameters:
+    ///   - transaction: Signed transaction object (matching test script pattern)
+    ///   - progressCallback: Optional callback for progress updates during polling
     /// - Returns: Transaction hash
     /// - Throws: BlockchainError if submission fails
-    func submitTransaction(_ transactionXdr: Data) async throws -> String {
+    func submitTransaction(_ transaction: Transaction, progressCallback: ((String) -> Void)? = nil) async throws -> String {
         print("BlockchainService: submitTransaction called")
         print("BlockchainService: RPC URL: \(config.rpcUrl)")
         
-        let rpcClient = SorobanServer(endpoint: config.rpcUrl)
+        // Verify transaction structure (matching JS validation)
+        // Log transaction details for debugging
+        print("BlockchainService: Transaction fee: \(transaction.fee)")
+        print("BlockchainService: Transaction operations count: \(transaction.operations.count)")
         
-        // Convert XDR Data to Transaction object
-        let transactionXdrString = transactionXdr.base64EncodedString()
-        print("BlockchainService: Transaction XDR length: \(transactionXdrString.count)")
+        // Verify transaction has operations
+        guard !transaction.operations.isEmpty else {
+            print("BlockchainService: ERROR: Transaction has no operations")
+            throw BlockchainError.transactionFailed
+        }
         
-        let stellarTransaction = try Transaction(envelopeXdr: transactionXdrString)
+        // Verify transaction fee is valid (minimum 100 stroops per operation)
+        let minFeePerOperation: Int64 = 100
+        let requiredMinFee = minFeePerOperation * Int64(transaction.operations.count)
+        if transaction.fee < requiredMinFee {
+            print("BlockchainService: ERROR: Transaction fee (\(transaction.fee)) is below minimum (\(requiredMinFee))")
+            throw BlockchainError.transactionFailed
+        }
         
         // Compute transaction hash before sending (needed for polling)
         let network: Network
@@ -205,31 +354,102 @@ class BlockchainService {
         case .mainnet:
             network = .public
         }
-        let hashString = try stellarTransaction.getTransactionHash(network: network)
+        let hashString = try transaction.getTransactionHash(network: network)
         print("BlockchainService: Transaction hash: \(hashString)")
         
+        // Send the transaction object directly (matching test script: rpcClient.sendTransaction(transaction: transaction))
+        // This matches the JS pattern: rpcServer.sendTransaction(transaction)
+        let rpcClient = SorobanServer(endpoint: config.rpcUrl)
         print("BlockchainService: Sending transaction to RPC...")
-        let sentTxResponse = await rpcClient.sendTransaction(transaction: stellarTransaction)
+        progressCallback?("Sending transaction to network...")
+        let sentTxResponse = await rpcClient.sendTransaction(transaction: transaction)
         
+        let sentTx: SendTransactionResponse
         switch sentTxResponse {
-        case .success(let sentTx):
+        case .success(let response):
+            sentTx = response
             print("BlockchainService: Transaction sent successfully")
             print("BlockchainService: SentTx: \(sentTx)")
+            
+            // Check for immediate errors in the response
+            if sentTx.status == "ERROR" {
+                print("BlockchainService: Transaction was immediately rejected with status: ERROR")
+                if let errorResult = sentTx.errorResult {
+                    print("BlockchainService: Error result code: \(errorResult.code)")
+                    print("BlockchainService: Error result XDR: \(sentTx.errorResultXdr ?? "nil")")
+                    
+                    // Check for contract errors
+                    let errorString = "\(errorResult)"
+                    if let contractError = ContractError.fromErrorString(errorString) {
+                        print("BlockchainService: Contract error detected: \(contractError)")
+                        throw BlockchainError.contractError(contractError)
+                    }
+                    
+                    // Handle specific error codes
+                    switch errorResult.code {
+                    case .malformed:
+                        throw BlockchainError.transactionRejected("Transaction was rejected as malformed. Please check your transaction parameters.")
+                    case .badAuth:
+                        throw BlockchainError.transactionRejected("Transaction authentication failed. Please check your signature.")
+                    case .badSeq:
+                        throw BlockchainError.transactionRejected("Transaction sequence number is incorrect.")
+                    default:
+                        throw BlockchainError.transactionRejected("Transaction was rejected: \(errorResult.code)")
+                    }
+                } else {
+                    throw BlockchainError.transactionRejected("Transaction was rejected by the network.")
+                }
+            }
+            
+            // If status is not PENDING or SUCCESS, don't poll
+            if sentTx.status != "PENDING" && sentTx.status != "SUCCESS" {
+                print("BlockchainService: Transaction status is '\(sentTx.status)', not polling")
+                if sentTx.status == "SUCCESS" {
+                    return hashString
+                } else {
+                    throw BlockchainError.transactionRejected("Transaction status: \(sentTx.status)")
+                }
+            }
         case .failure(let error):
             print("BlockchainService: ERROR sending transaction: \(error)")
-            if let sorobanError = error as? SorobanRpcRequestError {
-                print("BlockchainService: SorobanRpcRequestError details: \(sorobanError)")
+            print("BlockchainService: Error type: \(type(of: error))")
+            print("BlockchainService: Error details: \(error)")
+            
+            // Use structured error parsing
+            let errorString = "\(error)"
+            if let contractError = ContractError.fromErrorString(errorString) {
+                print("BlockchainService: Contract error detected in send response: \(contractError)")
+                throw BlockchainError.contractError(contractError)
             }
-            throw BlockchainError.transactionRejected
+            
+            throw BlockchainError.transactionRejected("Failed to send transaction: \(error.localizedDescription)")
         }
         
-        // Poll for transaction confirmation
+        // Poll for transaction confirmation with exponential backoff (Stellar SDK best practice)
         print("BlockchainService: Polling for transaction confirmation...")
+        progressCallback?("Waiting for transaction confirmation...")
         let maxAttempts = 10
+        let maxPollingDuration: TimeInterval = 30.0 // Maximum 30 seconds total
+        let initialDelay: TimeInterval = 0.5 // Start with 500ms
+        let maxDelay: TimeInterval = 3.0 // Cap at 3 seconds
         var attempts = 0
+        var currentDelay = initialDelay
+        let startTime = Date()
         
         while attempts < maxAttempts {
-            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            // Check if we've exceeded maximum polling duration
+            let elapsed = Date().timeIntervalSince(startTime)
+            if elapsed > maxPollingDuration {
+                print("BlockchainService: Transaction polling exceeded maximum duration (\(maxPollingDuration)s)")
+                progressCallback?("Transaction confirmation timed out")
+                throw BlockchainError.transactionTimeout
+            }
+            
+            // Exponential backoff: wait with increasing delay
+            let delayNanoseconds = UInt64(currentDelay * 1_000_000_000)
+            print("BlockchainService: Waiting \(String(format: "%.2f", currentDelay))s before attempt \(attempts + 1)/\(maxAttempts)...")
+            progressCallback?("Checking transaction status... (\(attempts + 1)/\(maxAttempts))")
+            try await Task.sleep(nanoseconds: delayNanoseconds)
             
             let txResponseEnum = await rpcClient.getTransaction(transactionHash: hashString)
             
@@ -238,42 +458,114 @@ class BlockchainService {
                 print("BlockchainService: Transaction status: \(txResponse.status)")
                 if txResponse.status == GetTransactionResponse.STATUS_SUCCESS {
                     print("BlockchainService: Transaction confirmed successfully!")
+                    progressCallback?("Transaction confirmed!")
                     return hashString
                 } else if txResponse.status == GetTransactionResponse.STATUS_FAILED {
                     print("BlockchainService: Transaction failed on network")
+                    print("BlockchainService: Full response: \(txResponse)")
+                    
+                    // Use structured error parsing
+                    let responseString = "\(txResponse)"
+                    print("BlockchainService: Response string: \(responseString)")
+                    
+                    if let contractError = ContractError.fromErrorString(responseString) {
+                        print("BlockchainService: Contract error detected in transaction response: \(contractError)")
+                        throw BlockchainError.contractError(contractError)
+                    }
+                    
                     throw BlockchainError.transactionFailed
                 } else {
+                    // Transaction still pending, continue polling
                     attempts += 1
+                    // Exponential backoff: double the delay, capped at maxDelay
+                    currentDelay = min(currentDelay * 2.0, maxDelay)
                     continue
                 }
             case .failure(let error):
                 print("BlockchainService: Error getting transaction (attempt \(attempts + 1)/\(maxAttempts)): \(error)")
                 attempts += 1
+                // Exponential backoff: double the delay, capped at maxDelay
+                currentDelay = min(currentDelay * 2.0, maxDelay)
                 continue
             }
         }
         
-        print("BlockchainService: Transaction polling timed out")
+        print("BlockchainService: Transaction polling timed out after \(attempts) attempts")
         throw BlockchainError.transactionTimeout
     }
 }
 
+enum ContractError {
+    case tokenAlreadyClaimed
+    case nonExistentToken
+    case invalidSignature
+    case unknown(code: UInt32)
+    
+    /// Extract contract error from error string representation
+    /// - Parameter errorString: String representation of the error
+    /// - Returns: ContractError if detected, nil otherwise
+    static func fromErrorString(_ errorString: String) -> ContractError? {
+        // Check for specific error codes and keywords
+        // Error code 210: TokenAlreadyMinted
+        if errorString.contains("210") || 
+           errorString.contains("TokenAlreadyMinted") ||
+           (errorString.contains("already") && errorString.contains("minted")) {
+            return .tokenAlreadyClaimed
+        }
+        
+        // Error code 200: NonExistentToken
+        if errorString.contains("200") || errorString.contains("NonExistentToken") {
+            return .nonExistentToken
+        }
+        
+        // Error code 214: InvalidSignature
+        if errorString.contains("214") || errorString.contains("InvalidSignature") {
+            return .invalidSignature
+        }
+        
+        // Try to extract numeric error code
+        let pattern = #"Error\(Contract,\s*#(\d+)\)"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: []),
+           let match = regex.firstMatch(in: errorString, options: [], range: NSRange(location: 0, length: errorString.utf16.count)),
+           match.numberOfRanges > 1,
+           let range = Range(match.range(at: 1), in: errorString),
+           let code = UInt32(errorString[range]) {
+            return .unknown(code: code)
+        }
+        
+        return nil
+    }
+}
+
 enum BlockchainError: Error, LocalizedError {
-    case transactionRejected
+    case transactionRejected(String?)
     case transactionFailed
     case transactionTimeout
     case invalidResponse
+    case contractError(ContractError)
     
     var errorDescription: String? {
         switch self {
-        case .transactionRejected:
-            return "Transaction was rejected by the network"
+        case .transactionRejected(let message):
+            return message ?? "Transaction was rejected by the network. Please check your network connection and try again."
         case .transactionFailed:
-            return "Transaction failed on the network"
+            return "Transaction failed on the network. Please verify your account has sufficient funds and try again."
         case .transactionTimeout:
-            return "Transaction submission timed out"
+            return "Transaction submission timed out. The transaction may still be processing. Please check the transaction status later."
         case .invalidResponse:
-            return "Invalid response from network"
+            return "Invalid response from network. Please check your network connection and try again."
+        case .contractError(let contractError):
+            switch contractError {
+            case .tokenAlreadyClaimed:
+                return "This token has already been claimed. Each NFC chip can only be claimed once."
+            case .nonExistentToken:
+                return "Token does not exist. Please verify the contract ID is correct."
+            case .invalidSignature:
+                return "Invalid signature. Please ensure the NFC chip is working correctly and try again."
+            case .unknown(let code):
+                return "Contract error (code \(code)). Please contact support if this issue persists."
+            }
         }
     }
 }
+

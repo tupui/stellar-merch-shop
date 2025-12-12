@@ -3,7 +3,7 @@
  * Handles NFT minting with NFC chip authentication
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button, Text, Code } from "@stellar/design-system";
 import { Box } from "../layout/Box";
 import { ChipProgressIndicator } from "../ChipProgressIndicator";
@@ -16,7 +16,7 @@ import { getNetworkPassphrase } from "../../contracts/util";
 import { handleChipError, formatChipError } from "../../util/chipErrorHandler";
 import type { ContractCallOptions } from "../../types/contract";
 
-type MintStep = 'idle' | 'reading' | 'signing' | 'recovering' | 'calling' | 'confirming' | 'writing-ndef';
+type MintStep = 'idle' | 'scanning' | 'reading' | 'signing' | 'recovering' | 'calling' | 'submitting' | 'confirming' | 'writing-ndef';
 
 interface MintSectionProps {
   keyId: string;
@@ -40,11 +40,16 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
   const [minting, setMinting] = useState(false);
   const [mintStep, setMintStep] = useState<MintStep>('idle');
   const [result, setResult] = useState<MintResult>();
+  const [countdown, setCountdown] = useState<number | undefined>(undefined);
 
-  const steps: MintStep[] = ['reading', 'signing', 'recovering', 'calling', 'confirming', 'writing-ndef'];
+  const chipSteps: MintStep[] = ['scanning', 'reading', 'signing', 'recovering'];
+  const blockchainSteps: MintStep[] = ['calling', 'submitting', 'confirming'];
+  const allSteps: MintStep[] = [...chipSteps, ...blockchainSteps, 'writing-ndef'];
 
   const getStepMessage = (step: MintStep): string => {
     switch (step) {
+      case 'scanning':
+        return 'Scanning chip...';
       case 'reading':
         return 'Reading chip public key...';
       case 'signing':
@@ -52,7 +57,9 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
       case 'recovering':
         return 'Determining recovery ID...';
       case 'calling':
-        return 'Calling contract...';
+        return 'Preparing transaction...';
+      case 'submitting':
+        return 'Sending to blockchain...';
       case 'confirming':
         return 'Confirming transaction...';
       case 'writing-ndef':
@@ -61,6 +68,46 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
         return 'Processing...';
     }
   };
+
+  const isChipOperation = (step: MintStep): boolean => {
+    return chipSteps.includes(step);
+  };
+
+  const isBlockchainOperation = (step: MintStep): boolean => {
+    return blockchainSteps.includes(step);
+  };
+
+  // Handle 3-second forced scanning period
+  useEffect(() => {
+    if (mintStep === 'scanning') {
+      setCountdown(3);
+      const interval = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev === undefined || prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      const timeout = setTimeout(() => {
+        clearInterval(interval);
+        setCountdown(undefined);
+        // After 3 seconds, proceed to reading
+        if (mintStep === 'scanning') {
+          setMintStep('reading');
+        }
+      }, 3000);
+
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+      };
+    } else {
+      setCountdown(undefined);
+    }
+  }, [mintStep]);
 
   const handleMint = async () => {
     if (!address) return;
@@ -71,11 +118,11 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
     setMinting(true);
     setMintStep('idle');
     setResult(undefined);
+    setCountdown(undefined);
 
     try {
       // Ensure we're connected to NFC server
       if (!connected) {
-        setMintStep('reading');
         await connect();
       }
 
@@ -102,12 +149,22 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
         networkPassphraseToUse
       );
 
-      // Authenticate with chip
+      // Start with forced 3-second scanning period
+      setMintStep('scanning');
+      
+      // Wait for 3-second scanning period to complete
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          resolve();
+        }, 3000);
+      });
+      
+      // Now proceed with chip operations
       setMintStep('reading');
-      // messageHash is Uint8Array, authenticateWithChip now accepts both string and Uint8Array
       const authResult = await authenticateWithChip(keyIdNum, messageHash);
 
-      // Call contract
+      // Chip operations complete - close scanning UI
+      // Now move to blockchain operations
       setMintStep('calling');
       const tx = await contractClient.mint(
         {
@@ -123,8 +180,12 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
       );
 
       // Sign and send transaction
-      setMintStep('confirming');
+      setMintStep('submitting');
       const txResponse = await tx.signAndSend({ signTransaction, force: true });
+
+      setMintStep('confirming');
+      // Wait a moment for confirmation
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Contract returns u64 token_id (bigint)
       const returnedTokenId = txResponse.result as bigint;
@@ -138,7 +199,7 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
         await writeNDEF(ndefUrl);
         ndefWriteSuccess = true;
       } catch (ndefError) {
-        console.error('Failed to write NDEF (mint still successful):', ndefError);
+        // NDEF write failed but mint was successful, silently continue
       }
 
       setResult({
@@ -160,6 +221,7 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
     } finally {
       setMinting(false);
       setMintStep('idle');
+      setCountdown(undefined);
     }
   };
 
@@ -246,11 +308,44 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
           </Button>
 
           {minting && mintStep !== 'idle' && (
-            <ChipProgressIndicator
-              step={mintStep}
-              stepMessage={getStepMessage(mintStep)}
-              steps={steps}
-            />
+            <>
+              {isChipOperation(mintStep) && (
+                <ChipProgressIndicator
+                  step={mintStep}
+                  stepMessage={getStepMessage(mintStep)}
+                  steps={chipSteps}
+                  countdown={countdown}
+                />
+              )}
+              {isBlockchainOperation(mintStep) && (
+                <Box gap="xs" style={{ marginTop: "12px", padding: "12px", backgroundColor: "#e3f2fd", borderRadius: "4px" }}>
+                  <Text as="p" size="sm" weight="semi-bold" style={{ color: "#1976d2" }}>
+                    {getStepMessage(mintStep)}
+                  </Text>
+                  <Box gap="xs" direction="row" style={{ marginTop: "4px" }}>
+                    {blockchainSteps.map((stepName) => (
+                      <div
+                        key={stepName}
+                        style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          backgroundColor: blockchainSteps.indexOf(mintStep) >= blockchainSteps.indexOf(stepName) ? "#1976d2" : "#ddd",
+                          transition: "background-color 0.3s ease",
+                        }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+              {mintStep === 'writing-ndef' && (
+                <Box gap="xs" style={{ marginTop: "12px", padding: "12px", backgroundColor: "#f5f5f5", borderRadius: "4px" }}>
+                  <Text as="p" size="sm" weight="semi-bold" style={{ color: "#333" }}>
+                    {getStepMessage(mintStep)}
+                  </Text>
+                </Box>
+              )}
+            </>
           )}
         </Box>
       )}

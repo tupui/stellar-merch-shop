@@ -37,9 +37,7 @@ export function useNFC(): UseNFCReturn {
   const [generatingKey, setGeneratingKey] = useState(false);
   const [fetchingKey, setFetchingKey] = useState(false);
 
-  // Set up event listeners for connection state
   useEffect(() => {
-    // Check initial connection state
     setConnected(nfcClient.isConnected());
 
     const handleEvent = (event: { type: string; data?: unknown }) => {
@@ -63,33 +61,26 @@ export function useNFC(): UseNFCReturn {
 
 
   const connect = useCallback(async () => {
-    // Only connect if not already connected
     if (!nfcClient.isConnected()) {
       await nfcClient.connect();
     }
-    // Update state based on actual connection (event listener will also update it, but this ensures immediate update)
     setConnected(nfcClient.isConnected());
   }, []);
 
   const readChip = useCallback(async (keyId?: number): Promise<string> => {
-    // Check actual connection state and auto-connect if needed
     if (!nfcClient.isConnected()) {
       await connect();
     }
-
-    // Let the server handle chip presence checking - it will throw an error if chip not present
     return await nfcClient.readPublicKey(keyId);
   }, [connect]);
 
   const signWithChip = useCallback(async (messageDigest: Uint8Array, keyId?: number): Promise<SorobanSignature> => {
-    // Check actual connection state and auto-connect if needed
     if (!nfcClient.isConnected()) {
       await connect();
     }
 
     setSigning(true);
     try {
-      // Let the server handle chip presence checking - it will throw an error if chip not present
       return await nfcClient.signMessage(messageDigest, keyId);
     } finally {
       setSigning(false);
@@ -97,7 +88,6 @@ export function useNFC(): UseNFCReturn {
   }, [connect]);
 
   const readNDEF = useCallback(async (): Promise<string | null> => {
-    // Check actual connection state and auto-connect if needed
     if (!nfcClient.isConnected()) {
       await connect();
     }
@@ -111,7 +101,6 @@ export function useNFC(): UseNFCReturn {
   }, [connect]);
 
   const writeNDEF = useCallback(async (url: string): Promise<string> => {
-    // Check actual connection state and auto-connect if needed
     if (!nfcClient.isConnected()) {
       await connect();
     }
@@ -125,7 +114,6 @@ export function useNFC(): UseNFCReturn {
   }, [connect]);
 
   const generateKey = useCallback(async (): Promise<KeyInfo> => {
-    // Check actual connection state and auto-connect if needed
     if (!nfcClient.isConnected()) {
       await connect();
     }
@@ -139,7 +127,6 @@ export function useNFC(): UseNFCReturn {
   }, [connect]);
 
   const fetchKeyById = useCallback(async (keyId: number): Promise<KeyInfo> => {
-    // Check actual connection state and auto-connect if needed
     if (!nfcClient.isConnected()) {
       await connect();
     }

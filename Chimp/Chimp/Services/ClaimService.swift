@@ -36,6 +36,13 @@ class ClaimService {
             throw ClaimError.noContractId
         }
         
+        // Validate contract ID format
+        guard config.validateContractId(contractId) else {
+            print("ClaimService: ERROR: Invalid contract ID format: \(contractId)")
+            print("ClaimService: Contract ID should be 56 characters, start with 'C'")
+            throw ClaimError.chipReadFailed("Invalid contract ID format. Contract ID must be 56 characters and start with 'C'.")
+        }
+        
         print("ClaimService: Contract ID: \(contractId)")
         print("ClaimService: Contract ID length: \(contractId.count)")
         print("ClaimService: Wallet address: \(wallet.address)")
@@ -86,6 +93,10 @@ class ClaimService {
             networkPassphrase: config.networkPassphrase
         )
         
+        print("ClaimService: SEP-53 message length: \(message.count)")
+        print("ClaimService: SEP-53 message (hex): \(message.map { String(format: "%02x", $0) }.joined())")
+        print("ClaimService: Message hash (hex): \(messageHash.map { String(format: "%02x", $0) }.joined())")
+        
         // Step 4: Sign with chip
         progressCallback?("Signing with chip...")
         let signatureComponents = try await signWithChip(
@@ -95,10 +106,25 @@ class ClaimService {
             keyIndex: keyIndex
         )
         
-        // Step 5: Normalize S value
-        let normalizedS = CryptoUtils.normalizeS(signatureComponents.s)
+        // Step 5: Normalize S value (required by Soroban's secp256k1_recover)
+        // Matching JS implementation: normalizeS() in src/util/crypto.ts
+        let originalS = signatureComponents.s
+        let normalizedS = CryptoUtils.normalizeS(originalS)
         
-        // Step 6: Build signature (r + normalized s)
+        // Debug: Log signature components for comparison with JS
+        let rHex = signatureComponents.r.map { String(format: "%02x", $0) }.joined()
+        let sOriginalHex = originalS.map { String(format: "%02x", $0) }.joined()
+        let sNormalizedHex = normalizedS.map { String(format: "%02x", $0) }.joined()
+        print("ClaimService: Signature r (hex): \(rHex)")
+        print("ClaimService: Signature s original (hex): \(sOriginalHex)")
+        print("ClaimService: Signature s normalized (hex): \(sNormalizedHex)")
+        if originalS != normalizedS {
+            print("ClaimService: S value was normalized (s > half_order)")
+        } else {
+            print("ClaimService: S value already normalized (s <= half_order)")
+        }
+        
+        // Step 6: Build signature (r + normalized s) - 64 bytes total
         var signature = Data()
         signature.append(signatureComponents.r)
         signature.append(normalizedS)
@@ -107,72 +133,62 @@ class ClaimService {
             throw ClaimError.invalidSignature
         }
         
-        // Step 8: Try recovery IDs (start with 1, then 0, 2, 3)
-        let recoveryIdsToTry: [UInt32] = [1, 0, 2, 3]
-        var lastError: Error?
+        let signatureHex = signature.map { String(format: "%02x", $0) }.joined()
+        print("ClaimService: Final signature (r+s, hex): \(signatureHex)")
         
-        for recoveryId in recoveryIdsToTry {
-            do {
-                progressCallback?("Trying recovery ID \(recoveryId)...")
-                
-                // Source keypair already obtained in Step 2
-                
-                // Build transaction
-                print("ClaimService: Building transaction with recovery ID \(recoveryId)...")
-                let transactionXdr: Data
-                do {
-                    transactionXdr = try await blockchainService.buildClaimTransaction(
-                        contractId: config.contractId,
-                        claimant: wallet.address,
-                        message: message,
-                        signature: signature,
-                        recoveryId: recoveryId,
-                        publicKey: publicKeyData,
-                        nonce: nonce,
-                        sourceAccount: wallet.address,
-                        sourceKeyPair: sourceKeyPair
-                    )
-                    print("ClaimService: Transaction built successfully")
-                } catch {
-                    print("ClaimService: ERROR building transaction: \(error)")
-                    if let sorobanError = error as? SorobanRpcRequestError {
-                        print("ClaimService: SorobanRpcRequestError details: \(sorobanError)")
-                    }
-                    throw ClaimError.chipSignFailed("Failed to build transaction: \(error.localizedDescription)")
-                }
-                
-                // Sign transaction
-                progressCallback?("Signing transaction...")
-                let signedTx = try await walletService.signTransaction(transactionXdr)
-                
-                // Submit transaction
-                progressCallback?("Submitting transaction...")
-                let txHash = try await blockchainService.submitTransaction(signedTx)
-                
-                return txHash
-            } catch {
-                print("ClaimService: ERROR with recovery ID \(recoveryId): \(error)")
-                if let sorobanError = error as? SorobanRpcRequestError {
-                    print("ClaimService: SorobanRpcRequestError: \(sorobanError)")
-                }
-                lastError = error
-                // If transaction was rejected due to invalid signature, try next recovery ID
-                if case BlockchainError.transactionRejected = error {
-                    print("ClaimService: Transaction rejected, trying next recovery ID...")
-                    continue
-                }
-                // For RPC errors, also try next recovery ID (might be signature issue)
-                if error is SorobanRpcRequestError {
-                    print("ClaimService: RPC error, trying next recovery ID...")
-                    continue
-                }
-                // For other errors, rethrow
-                throw error
-            }
+        // Step 7: Determine recovery ID offline (matching JS determineRecoveryId)
+        // This uses contract simulation to find the correct recovery ID before building the transaction
+        // Note: Ideally this would use secp256k1 recovery (like JS @noble/secp256k1), but contract simulation works too
+        progressCallback?("Determining recovery ID...")
+        print("ClaimService: Determining recovery ID offline...")
+        let recoveryId: UInt32
+        do {
+            recoveryId = try await blockchainService.determineRecoveryId(
+                contractId: config.contractId,
+                claimant: wallet.address,
+                message: message,
+                signature: signature,
+                publicKey: publicKeyData,
+                nonce: nonce,
+                sourceKeyPair: sourceKeyPair
+            )
+            print("ClaimService: Recovery ID determined: \(recoveryId)")
+        } catch {
+            print("ClaimService: ERROR determining recovery ID: \(error)")
+            throw ClaimError.invalidRecoveryId("Could not determine recovery ID: \(error.localizedDescription)")
         }
         
-        // If all recovery IDs failed, throw error
-        throw ClaimError.invalidRecoveryId(lastError?.localizedDescription ?? "All recovery IDs failed")
+        // Step 8: Build transaction with the correct recovery ID
+        progressCallback?("Building transaction...")
+        print("ClaimService: Building transaction with recovery ID \(recoveryId)...")
+        let transaction: Transaction
+        do {
+            transaction = try await blockchainService.buildClaimTransaction(
+                contractId: config.contractId,
+                claimant: wallet.address,
+                message: message,
+                signature: signature,
+                recoveryId: recoveryId,
+                publicKey: publicKeyData,
+                nonce: nonce,
+                sourceAccount: wallet.address,
+                sourceKeyPair: sourceKeyPair
+            )
+            print("ClaimService: Transaction built successfully")
+        } catch {
+            print("ClaimService: ERROR building transaction: \(error)")
+            throw ClaimError.chipSignFailed("Failed to build transaction: \(error.localizedDescription)")
+        }
+        
+        // Step 9: Sign transaction
+        progressCallback?("Signing transaction...")
+        try await walletService.signTransaction(transaction)
+        
+        // Step 10: Submit transaction (send the signed transaction object directly, matching test script)
+        progressCallback?("Submitting transaction...")
+        let txHash = try await blockchainService.submitTransaction(transaction, progressCallback: progressCallback)
+        
+        return txHash
     }
     
     /// Read public key from chip
@@ -236,23 +252,23 @@ enum ClaimError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noWallet:
-            return "No wallet configured. Please login first."
+            return "No wallet configured. Please login with your secret key first."
         case .noContractId:
-            return "Contract ID not configured. Please set it in settings."
+            return "Contract ID not configured. Please set the contract ID in settings."
         case .invalidPublicKey:
-            return "Invalid public key format from chip"
+            return "Invalid public key format from chip. Please ensure you're using a compatible NFC chip."
         case .invalidMessageHash:
-            return "Invalid message hash (must be 32 bytes)"
+            return "Invalid message hash. This is an internal error. Please try again."
         case .chipReadFailed(let message):
-            return "Failed to read chip: \(message)"
+            return "Failed to read from NFC chip: \(message). Please ensure the chip is held steady near the top of your device."
         case .chipSignFailed(let message):
-            return "Failed to sign with chip: \(message)"
+            return "Failed to sign with NFC chip: \(message). Please ensure the chip is held steady and try again."
         case .signatureParseFailed(let message):
-            return "Failed to parse signature: \(message)"
+            return "Failed to parse signature from chip: \(message). Please try again."
         case .invalidSignature:
-            return "Invalid signature format"
+            return "Invalid signature format. Please try again."
         case .invalidRecoveryId(let message):
-            return "Could not determine recovery ID: \(message)"
+            return "Could not verify signature: \(message). Please ensure the NFC chip is working correctly."
         }
     }
 }
