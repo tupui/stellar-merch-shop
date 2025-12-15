@@ -16,7 +16,13 @@ import { getNetworkPassphrase } from "../../contracts/util";
 import { handleChipError, formatChipError } from "../../util/chipErrorHandler";
 import type { ContractCallOptions } from "../../types/contract";
 
-type ClaimStep = 'idle' | 'reading' | 'signing' | 'recovering' | 'calling' | 'confirming';
+type ClaimStep =
+  | "idle"
+  | "reading"
+  | "signing"
+  | "recovering"
+  | "calling"
+  | "confirming";
 
 interface ClaimSectionProps {
   keyId: string;
@@ -30,69 +36,86 @@ interface ClaimResult {
 }
 
 export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
-  const { address, updateBalances, signTransaction, network: walletNetwork, networkPassphrase: walletPassphrase } = useWallet();
+  const {
+    address,
+    updateBalances,
+    signTransaction,
+    network: walletNetwork,
+    networkPassphrase: walletPassphrase,
+  } = useWallet();
   const { connected, connect, readChip } = useNFC();
   const { authenticateWithChip } = useChipAuth();
   const { contractClient, isReady } = useContractClient(contractId);
   const [claiming, setClaiming] = useState(false);
-  const [claimStep, setClaimStep] = useState<ClaimStep>('idle');
+  const [claimStep, setClaimStep] = useState<ClaimStep>("idle");
   const [result, setResult] = useState<ClaimResult>();
 
-  const steps: ClaimStep[] = ['reading', 'signing', 'recovering', 'calling', 'confirming'];
+  const steps: ClaimStep[] = [
+    "reading",
+    "signing",
+    "recovering",
+    "calling",
+    "confirming",
+  ];
 
   const getStepMessage = (step: ClaimStep): string => {
     switch (step) {
-      case 'reading':
-        return 'Reading chip public key...';
-      case 'signing':
-        return 'Waiting for chip signature...';
-      case 'recovering':
-        return 'Determining recovery ID...';
-      case 'calling':
-        return 'Calling contract...';
-      case 'confirming':
-        return 'Confirming transaction...';
+      case "reading":
+        return "Reading chip public key...";
+      case "signing":
+        return "Waiting for chip signature...";
+      case "recovering":
+        return "Determining recovery ID...";
+      case "calling":
+        return "Calling contract...";
+      case "confirming":
+        return "Confirming transaction...";
       default:
-        return 'Processing...';
+        return "Processing...";
     }
   };
 
   const handleClaim = async () => {
     if (!address) return;
     if (!isReady || !contractClient) {
-      throw new Error('Contract client is not ready. Please check your contract ID.');
+      throw new Error(
+        "Contract client is not ready. Please check your contract ID.",
+      );
     }
 
     setClaiming(true);
-    setClaimStep('idle');
+    setClaimStep("idle");
     setResult(undefined);
 
     try {
       // Ensure we're connected to NFC server
       if (!connected) {
-        setClaimStep('reading');
+        setClaimStep("reading");
         await connect();
       }
 
       // Validate keyId
       const keyIdNum = parseInt(keyId, 10);
       if (isNaN(keyIdNum) || keyIdNum < 1 || keyIdNum > 255) {
-        throw new Error('Key ID must be between 1 and 255');
+        throw new Error("Key ID must be between 1 and 255");
       }
 
       if (!walletPassphrase) {
-        throw new Error('Network passphrase is required');
+        throw new Error("Network passphrase is required");
       }
 
       // Get network-specific settings
-      const networkPassphraseToUse = getNetworkPassphrase(walletNetwork, walletPassphrase);
-      
+      const networkPassphraseToUse = getNetworkPassphrase(
+        walletNetwork,
+        walletPassphrase,
+      );
+
       // Read chip public key first to get nonce
-      setClaimStep('reading');
+      setClaimStep("reading");
       const chipPublicKeyHex = await readChip(keyIdNum);
       const { hexToBytes } = await import("../../util/crypto");
       const chipPublicKeyBytes = hexToBytes(chipPublicKeyHex);
-      
+
       // Get current nonce from contract
       let currentNonce = 0;
       try {
@@ -102,7 +125,7 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
           },
           {
             publicKey: address,
-          } as ContractCallOptions
+          } as ContractCallOptions,
         );
         currentNonce = (nonceResult.result as number) || 0;
       } catch (err) {
@@ -110,25 +133,25 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
         // Nonce fetch failed, defaulting to 0 (first use)
         currentNonce = 0;
       }
-      
+
       // Use next nonce (must be greater than stored)
       const nonce = currentNonce + 1;
 
       // Create SEP-53 message for claim
       const { message, messageHash } = await createSEP53Message(
         contractId,
-        'claim',
+        "claim",
         [address],
         nonce,
-        networkPassphraseToUse
+        networkPassphraseToUse,
       );
 
       // Authenticate with chip
-      setClaimStep('signing');
+      setClaimStep("signing");
       const authResult = await authenticateWithChip(keyIdNum, messageHash);
 
       // Call contract
-      setClaimStep('calling');
+      setClaimStep("calling");
       const tx = await contractClient.claim(
         {
           claimant: address,
@@ -140,11 +163,11 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
         },
         {
           publicKey: address,
-        } as ContractCallOptions
+        } as ContractCallOptions,
       );
 
       // Sign and send transaction
-      setClaimStep('confirming');
+      setClaimStep("confirming");
       const txResponse = await tx.signAndSend({ signTransaction, force: true });
 
       // Contract returns u64 token_id (bigint)
@@ -158,7 +181,7 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
 
       await updateBalances();
     } catch (err) {
-      console.error('Claiming error:', err);
+      console.error("Claiming error:", err);
       const errorResult = handleChipError(err);
       setResult({
         success: false,
@@ -166,7 +189,7 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
       });
     } finally {
       setClaiming(false);
-      setClaimStep('idle');
+      setClaimStep("idle");
     }
   };
 
@@ -192,7 +215,8 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
               ✓ Claim Successful!
             </Text>
             <Text as="p" size="sm" style={{ color: "#666" }}>
-              Token {result.tokenId} has been successfully claimed to your wallet.
+              Token {result.tokenId} has been successfully claimed to your
+              wallet.
             </Text>
             <Button
               type="button"
@@ -212,7 +236,9 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
               ✗ Claim Failed
             </Text>
             <Text as="p" size="sm" style={{ color: "#666" }}>
-              {typeof result.error === 'string' ? result.error : String(result.error || 'Unknown error')}
+              {typeof result.error === "string"
+                ? result.error
+                : String(result.error || "Unknown error")}
             </Text>
             <Button
               type="button"
@@ -236,7 +262,7 @@ export const ClaimSection = ({ keyId, contractId }: ClaimSectionProps) => {
               Claim NFT with Chip
             </Button>
 
-            {claiming && claimStep !== 'idle' && (
+            {claiming && claimStep !== "idle" && (
               <ChipProgressIndicator
                 step={claimStep}
                 stepMessage={getStepMessage(claimStep)}

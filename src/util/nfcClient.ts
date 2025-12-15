@@ -3,13 +3,13 @@
  * Desktop-only implementation using WebSocket server
  */
 
-import type { NFCSignature, SorobanSignature } from './crypto';
-import { formatSignatureForSoroban, bytesToHex } from './crypto';
+import type { NFCSignature, SorobanSignature } from "./crypto";
+import { formatSignatureForSoroban, bytesToHex } from "./crypto";
 
 /**
  * WebSocket URL for NFC server (desktop only)
  */
-const WEBSOCKET_URL = 'ws://localhost:8080';
+const WEBSOCKET_URL = "ws://localhost:8080";
 
 export interface NFCStatus {
   readerConnected: boolean;
@@ -17,7 +17,11 @@ export interface NFCStatus {
   readerName: string | null;
 }
 
-export type NFCClientEventType = 'status' | 'error' | 'connected' | 'disconnected';
+export type NFCClientEventType =
+  | "status"
+  | "error"
+  | "connected"
+  | "disconnected";
 
 export interface NFCClientEvent {
   type: NFCClientEventType;
@@ -30,30 +34,38 @@ export type NFCClientEventListener = (event: NFCClientEvent) => void;
  * Custom error types for better error handling
  */
 export class NFCServerNotRunningError extends Error {
-  constructor(message = 'NFC server is not running. Please start it with: bun run nfc-server') {
+  constructor(
+    message = "NFC server is not running. Please start it with: bun run nfc-server",
+  ) {
     super(message);
-    this.name = 'NFCServerNotRunningError';
+    this.name = "NFCServerNotRunningError";
   }
 }
 
 export class ChipNotPresentError extends Error {
-  constructor(message = 'No NFC chip detected. Please place the chip on the reader.') {
+  constructor(
+    message = "No NFC chip detected. Please place the chip on the reader.",
+  ) {
     super(message);
-    this.name = 'ChipNotPresentError';
+    this.name = "ChipNotPresentError";
   }
 }
 
 export class APDUCommandFailedError extends Error {
-  constructor(message = 'APDU command failed. The chip may not be properly positioned or compatible.') {
+  constructor(
+    message = "APDU command failed. The chip may not be properly positioned or compatible.",
+  ) {
     super(message);
-    this.name = 'APDUCommandFailedError';
+    this.name = "APDUCommandFailedError";
   }
 }
 
 export class RecoveryIdError extends Error {
-  constructor(message = 'Could not determine recovery ID. This may indicate a signature mismatch.') {
+  constructor(
+    message = "Could not determine recovery ID. This may indicate a signature mismatch.",
+  ) {
     super(message);
-    this.name = 'RecoveryIdError';
+    this.name = "RecoveryIdError";
   }
 }
 
@@ -99,7 +111,7 @@ class WebSocketNFCClient {
   private currentStatus: NFCStatus = {
     readerConnected: false,
     chipPresent: false,
-    readerName: null
+    readerName: null,
   };
 
   constructor(wsUrl?: string) {
@@ -120,8 +132,8 @@ class WebSocketNFCClient {
 
         this.ws.onopen = () => {
           this.reconnectAttempts = 0;
-          this.emit({ type: 'connected' });
-          
+          this.emit({ type: "connected" });
+
           // Request initial status
           this.requestStatus();
           resolve();
@@ -129,7 +141,9 @@ class WebSocketNFCClient {
 
         this.ws.onmessage = (event) => {
           try {
-            const message = JSON.parse(event.data as string) as WebSocketMessage;
+            const message = JSON.parse(
+              event.data as string,
+            ) as WebSocketMessage;
             this.handleMessage(message);
           } catch {
             // Ignore parse errors
@@ -141,22 +155,25 @@ class WebSocketNFCClient {
         };
 
         this.ws.onclose = (event) => {
-          this.emit({ type: 'disconnected' });
+          this.emit({ type: "disconnected" });
           this.currentStatus = {
             readerConnected: false,
             chipPresent: false,
-            readerName: null
+            readerName: null,
           };
-          
+
           // Log close details for debugging
-          
+
           // If connection closed during initial connect attempt and not normal closure, reject
           if (event.code !== 1000 && event.code !== 1001) {
-            const errorMsg = this.getConnectionErrorMessage(event.code, event.reason);
+            const errorMsg = this.getConnectionErrorMessage(
+              event.code,
+              event.reason,
+            );
             reject(new NFCServerNotRunningError(errorMsg));
             return;
           }
-          
+
           // Attempt reconnection if not manually disconnected
           if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
@@ -171,7 +188,11 @@ class WebSocketNFCClient {
           }
         };
       } catch (error) {
-        reject(error instanceof Error ? error : new Error('Unknown connection error'));
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("Unknown connection error"),
+        );
       }
     });
   }
@@ -208,7 +229,7 @@ class WebSocketNFCClient {
     if (!this.isConnected()) {
       return; // Silently return if not connected
     }
-    this.send({ type: 'status' });
+    this.send({ type: "status" });
   }
 
   /**
@@ -218,7 +239,7 @@ class WebSocketNFCClient {
   async readPublicKey(keyId?: number): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this.isConnected()) {
-        reject(new Error('Not connected to NFC server'));
+        reject(new Error("Not connected to NFC server"));
         return;
       }
 
@@ -229,12 +250,12 @@ class WebSocketNFCClient {
 
       // Validate keyId if provided
       if (keyId !== undefined && (keyId < 1 || keyId > 255)) {
-        reject(new Error('Invalid key ID (must be 1-255)'));
+        reject(new Error("Invalid key ID (must be 1-255)"));
         return;
       }
 
       const handler = (event: NFCClientEvent) => {
-        if (event.type === 'error') {
+        if (event.type === "error") {
           this.removeListener(handler);
           reject(new Error(event.data as string));
         }
@@ -243,27 +264,31 @@ class WebSocketNFCClient {
       this.addListener(handler);
 
       // Send request with optional keyId
-      this.send({ 
-        type: 'read-pubkey',
-        data: keyId !== undefined ? { keyId } : undefined
+      this.send({
+        type: "read-pubkey",
+        data: keyId !== undefined ? { keyId } : undefined,
       });
 
       // Set up one-time message listener
       const messageHandler = (event: MessageEvent) => {
         try {
           const message = JSON.parse(event.data as string) as WebSocketMessage;
-          if (message.type === 'pubkey' && message.success && message.data?.publicKey) {
+          if (
+            message.type === "pubkey" &&
+            message.success &&
+            message.data?.publicKey
+          ) {
             this.removeListener(handler);
             if (this.ws) {
-              this.ws.removeEventListener('message', messageHandler);
+              this.ws.removeEventListener("message", messageHandler);
             }
             resolve(message.data.publicKey);
-          } else if (message.type === 'error') {
+          } else if (message.type === "error") {
             this.removeListener(handler);
             if (this.ws) {
-              this.ws.removeEventListener('message', messageHandler);
+              this.ws.removeEventListener("message", messageHandler);
             }
-            reject(new Error(message.error ?? 'Unknown error'));
+            reject(new Error(message.error ?? "Unknown error"));
           }
         } catch {
           // Ignore parse errors
@@ -271,16 +296,16 @@ class WebSocketNFCClient {
       };
 
       if (this.ws) {
-        this.ws.addEventListener('message', messageHandler);
+        this.ws.addEventListener("message", messageHandler);
       }
 
       // Timeout after 10 seconds
       setTimeout(() => {
         this.removeListener(handler);
         if (this.ws) {
-          this.ws.removeEventListener('message', messageHandler);
+          this.ws.removeEventListener("message", messageHandler);
         }
-        reject(new Error('Timeout reading public key'));
+        reject(new Error("Timeout reading public key"));
       }, 10000);
     });
   }
@@ -291,10 +316,13 @@ class WebSocketNFCClient {
    * @param messageDigest - 32-byte message digest to sign
    * @param keyId - Optional key ID (1-255). Defaults to 1 if not provided.
    */
-  async signMessage(messageDigest: Uint8Array, keyId?: number): Promise<SorobanSignature> {
+  async signMessage(
+    messageDigest: Uint8Array,
+    keyId?: number,
+  ): Promise<SorobanSignature> {
     return new Promise((resolve, reject) => {
       if (!this.isConnected()) {
-        reject(new Error('Not connected to NFC server'));
+        reject(new Error("Not connected to NFC server"));
         return;
       }
 
@@ -304,18 +332,18 @@ class WebSocketNFCClient {
       }
 
       if (messageDigest.length !== 32) {
-        reject(new Error('Message digest must be exactly 32 bytes'));
+        reject(new Error("Message digest must be exactly 32 bytes"));
         return;
       }
 
       // Validate keyId if provided
       if (keyId !== undefined && (keyId < 1 || keyId > 255)) {
-        reject(new Error('Invalid key ID (must be 1-255)'));
+        reject(new Error("Invalid key ID (must be 1-255)"));
         return;
       }
 
       const handler = (event: NFCClientEvent) => {
-        if (event.type === 'error') {
+        if (event.type === "error") {
           this.removeListener(handler);
           reject(new Error(event.data as string));
         }
@@ -328,65 +356,71 @@ class WebSocketNFCClient {
 
       // Send sign request with optional keyId
       this.send({
-        type: 'sign',
-        data: { 
+        type: "sign",
+        data: {
           messageDigest: messageDigestHex,
-          ...(keyId !== undefined ? { keyId } : {})
-        }
+          ...(keyId !== undefined ? { keyId } : {}),
+        },
       });
 
       // Set up one-time message listener
       const messageHandler = (event: MessageEvent) => {
         try {
           const message = JSON.parse(event.data as string) as WebSocketMessage;
-          if (message.type === 'signature' && message.success && message.data) {
+          if (message.type === "signature" && message.success && message.data) {
             this.removeListener(handler);
             if (this.ws) {
-              this.ws.removeEventListener('message', messageHandler);
+              this.ws.removeEventListener("message", messageHandler);
             }
-            
+
             if (!message.data.r || !message.data.s) {
               const errorMsg = `Invalid signature data from server: r=${!!message.data.r}, s=${!!message.data.s}`;
               console.error(errorMsg, message.data);
               this.removeListener(handler);
               if (this.ws) {
-                this.ws.removeEventListener('message', messageHandler);
+                this.ws.removeEventListener("message", messageHandler);
               }
               reject(new Error(errorMsg));
               return;
             }
-            
+
             if (message.data.r.length !== 64 || message.data.s.length !== 64) {
               const errorMsg = `Invalid signature component lengths: r=${message.data.r.length} (expected 64), s=${message.data.s.length} (expected 64)`;
               console.error(errorMsg);
               this.removeListener(handler);
               if (this.ws) {
-                this.ws.removeEventListener('message', messageHandler);
+                this.ws.removeEventListener("message", messageHandler);
               }
               reject(new Error(errorMsg));
               return;
             }
-            
-            const recoveryIdFromServer = message.data.recoveryId as number | undefined;
+
+            const recoveryIdFromServer = message.data.recoveryId as
+              | number
+              | undefined;
             const nfcSig: NFCSignature = {
               r: message.data.r,
               s: message.data.s,
               v: recoveryIdFromServer !== undefined ? recoveryIdFromServer : 0,
-              recoveryId: recoveryIdFromServer
+              recoveryId: recoveryIdFromServer,
             };
-            
+
             try {
               const sorobanSig = formatSignatureForSoroban(nfcSig);
               resolve(sorobanSig);
             } catch (formatError) {
-              reject(formatError instanceof Error ? formatError : new Error('Failed to format signature'));
+              reject(
+                formatError instanceof Error
+                  ? formatError
+                  : new Error("Failed to format signature"),
+              );
             }
-          } else if (message.type === 'error') {
+          } else if (message.type === "error") {
             this.removeListener(handler);
             if (this.ws) {
-              this.ws.removeEventListener('message', messageHandler);
+              this.ws.removeEventListener("message", messageHandler);
             }
-            reject(new Error(message.error ?? 'Unknown error'));
+            reject(new Error(message.error ?? "Unknown error"));
           }
         } catch {
           // Ignore parse errors
@@ -394,16 +428,16 @@ class WebSocketNFCClient {
       };
 
       if (this.ws) {
-        this.ws.addEventListener('message', messageHandler);
+        this.ws.addEventListener("message", messageHandler);
       }
 
       // Timeout after 30 seconds (chip signing can take a while)
       setTimeout(() => {
         this.removeListener(handler);
         if (this.ws) {
-          this.ws.removeEventListener('message', messageHandler);
+          this.ws.removeEventListener("message", messageHandler);
         }
-        reject(new Error('Timeout signing message'));
+        reject(new Error("Timeout signing message"));
       }, 30000);
     });
   }
@@ -435,14 +469,17 @@ class WebSocketNFCClient {
         reject(new ChipNotPresentError());
         return;
       }
-      
+
       this.performReadNDEF(resolve, reject);
     });
   }
 
-  private performReadNDEF(resolve: (value: string | null) => void, reject: (reason?: unknown) => void) {
+  private performReadNDEF(
+    resolve: (value: string | null) => void,
+    reject: (reason?: unknown) => void,
+  ) {
     const handler = (event: NFCClientEvent) => {
-      if (event.type === 'error') {
+      if (event.type === "error") {
         this.removeListener(handler);
         reject(new Error(event.data as string));
       }
@@ -451,24 +488,24 @@ class WebSocketNFCClient {
     this.addListener(handler);
 
     // Send read NDEF request
-    this.send({ type: 'read-ndef' });
+    this.send({ type: "read-ndef" });
 
     // Set up one-time message listener
     const messageHandler = (event: MessageEvent) => {
       try {
         const message = JSON.parse(event.data as string) as WebSocketMessage;
-        if (message.type === 'ndef-read' && message.success) {
+        if (message.type === "ndef-read" && message.success) {
           this.removeListener(handler);
           if (this.ws) {
-            this.ws.removeEventListener('message', messageHandler);
+            this.ws.removeEventListener("message", messageHandler);
           }
           resolve(message.data?.url || null);
-        } else if (message.type === 'error') {
+        } else if (message.type === "error") {
           this.removeListener(handler);
           if (this.ws) {
-            this.ws.removeEventListener('message', messageHandler);
+            this.ws.removeEventListener("message", messageHandler);
           }
-          reject(new Error(message.error ?? 'Unknown error'));
+          reject(new Error(message.error ?? "Unknown error"));
         }
       } catch (error) {
         // Ignore parse errors
@@ -476,16 +513,16 @@ class WebSocketNFCClient {
     };
 
     if (this.ws) {
-      this.ws.addEventListener('message', messageHandler);
+      this.ws.addEventListener("message", messageHandler);
     }
 
     // Timeout after 10 seconds
     setTimeout(() => {
       this.removeListener(handler);
       if (this.ws) {
-        this.ws.removeEventListener('message', messageHandler);
+        this.ws.removeEventListener("message", messageHandler);
       }
-      reject(new Error('Timeout reading NDEF'));
+      reject(new Error("Timeout reading NDEF"));
     }, 10000);
   }
 
@@ -511,14 +548,17 @@ class WebSocketNFCClient {
         reject(new ChipNotPresentError());
         return;
       }
-      
+
       this.performGenerateKey(resolve, reject);
     });
   }
 
-  private performGenerateKey(resolve: (value: KeyInfo) => void, reject: (reason?: unknown) => void) {
+  private performGenerateKey(
+    resolve: (value: KeyInfo) => void,
+    reject: (reason?: unknown) => void,
+  ) {
     const handler = (event: NFCClientEvent) => {
-      if (event.type === 'error') {
+      if (event.type === "error") {
         this.removeListener(handler);
         reject(new Error(event.data as string));
       }
@@ -527,29 +567,33 @@ class WebSocketNFCClient {
     this.addListener(handler);
 
     // Send generate key request
-    this.send({ type: 'generate-key' });
+    this.send({ type: "generate-key" });
 
     // Set up one-time message listener
     const messageHandler = (event: MessageEvent) => {
       try {
         const message = JSON.parse(event.data as string) as WebSocketMessage;
-        if (message.type === 'key-generated' && message.success && message.data) {
+        if (
+          message.type === "key-generated" &&
+          message.success &&
+          message.data
+        ) {
           this.removeListener(handler);
           if (this.ws) {
-            this.ws.removeEventListener('message', messageHandler);
+            this.ws.removeEventListener("message", messageHandler);
           }
           resolve({
             keyId: message.data.keyId ?? 0,
-            publicKey: message.data.publicKey ?? '',
+            publicKey: message.data.publicKey ?? "",
             globalCounter: message.data.globalCounter ?? null,
-            keyCounter: message.data.keyCounter ?? null
+            keyCounter: message.data.keyCounter ?? null,
           });
-        } else if (message.type === 'error') {
+        } else if (message.type === "error") {
           this.removeListener(handler);
           if (this.ws) {
-            this.ws.removeEventListener('message', messageHandler);
+            this.ws.removeEventListener("message", messageHandler);
           }
-          reject(new Error(message.error ?? 'Unknown error'));
+          reject(new Error(message.error ?? "Unknown error"));
         }
       } catch (error) {
         // Ignore parse errors
@@ -557,16 +601,16 @@ class WebSocketNFCClient {
     };
 
     if (this.ws) {
-      this.ws.addEventListener('message', messageHandler);
+      this.ws.addEventListener("message", messageHandler);
     }
 
     // Timeout after 10 seconds
     setTimeout(() => {
       this.removeListener(handler);
       if (this.ws) {
-        this.ws.removeEventListener('message', messageHandler);
+        this.ws.removeEventListener("message", messageHandler);
       }
-      reject(new Error('Timeout generating key'));
+      reject(new Error("Timeout generating key"));
     }, 10000);
   }
 
@@ -599,14 +643,18 @@ class WebSocketNFCClient {
         reject(new ChipNotPresentError());
         return;
       }
-      
+
       this.performFetchKey(keyId, resolve, reject);
     });
   }
 
-  private performFetchKey(keyId: number, resolve: (value: KeyInfo) => void, reject: (reason?: unknown) => void) {
+  private performFetchKey(
+    keyId: number,
+    resolve: (value: KeyInfo) => void,
+    reject: (reason?: unknown) => void,
+  ) {
     const handler = (event: NFCClientEvent) => {
-      if (event.type === 'error') {
+      if (event.type === "error") {
         this.removeListener(handler);
         reject(new Error(event.data as string));
       }
@@ -615,36 +663,39 @@ class WebSocketNFCClient {
     this.addListener(handler);
 
     // Send fetch key request
-    this.send({ type: 'fetch-key', data: { keyId } });
+    this.send({ type: "fetch-key", data: { keyId } });
 
     // Set up one-time message listener
     const messageHandler = (event: MessageEvent) => {
       try {
         const message = JSON.parse(event.data as string) as WebSocketMessage;
-        if (message.type === 'key-fetched') {
+        if (message.type === "key-fetched") {
           this.removeListener(handler);
           if (this.ws) {
-            this.ws.removeEventListener('message', messageHandler);
+            this.ws.removeEventListener("message", messageHandler);
           }
-          
+
           if (message.success && message.data) {
             resolve({
               keyId: message.data.keyId ?? keyId,
-              publicKey: message.data.publicKey ?? '',
+              publicKey: message.data.publicKey ?? "",
               globalCounter: message.data.globalCounter ?? null,
-              keyCounter: message.data.keyCounter ?? null
+              keyCounter: message.data.keyCounter ?? null,
             });
           } else {
             // Key not found or other failure
-            const errorMsg = (message as { message?: string }).message ?? message.error ?? 'Key not found';
+            const errorMsg =
+              (message as { message?: string }).message ??
+              message.error ??
+              "Key not found";
             reject(new Error(errorMsg));
           }
-        } else if (message.type === 'error') {
+        } else if (message.type === "error") {
           this.removeListener(handler);
           if (this.ws) {
-            this.ws.removeEventListener('message', messageHandler);
+            this.ws.removeEventListener("message", messageHandler);
           }
-          reject(new Error(message.error ?? 'Unknown error'));
+          reject(new Error(message.error ?? "Unknown error"));
         }
       } catch (error) {
         // Ignore parse errors
@@ -652,16 +703,16 @@ class WebSocketNFCClient {
     };
 
     if (this.ws) {
-      this.ws.addEventListener('message', messageHandler);
+      this.ws.addEventListener("message", messageHandler);
     }
 
     // Timeout after 10 seconds
     setTimeout(() => {
       this.removeListener(handler);
       if (this.ws) {
-        this.ws.removeEventListener('message', messageHandler);
+        this.ws.removeEventListener("message", messageHandler);
       }
-      reject(new Error('Timeout fetching key'));
+      reject(new Error("Timeout fetching key"));
     }, 10000);
   }
 
@@ -671,7 +722,7 @@ class WebSocketNFCClient {
   async writeNDEF(url: string): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this.isConnected()) {
-        reject(new Error('Not connected to NFC server'));
+        reject(new Error("Not connected to NFC server"));
         return;
       }
 
@@ -681,7 +732,7 @@ class WebSocketNFCClient {
       }
 
       const handler = (event: NFCClientEvent) => {
-        if (event.type === 'error') {
+        if (event.type === "error") {
           this.removeListener(handler);
           reject(new Error(event.data as string));
         }
@@ -691,26 +742,30 @@ class WebSocketNFCClient {
 
       // Send write NDEF request
       this.send({
-        type: 'write-ndef',
-        data: { url }
+        type: "write-ndef",
+        data: { url },
       });
 
       // Set up one-time message listener
       const messageHandler = (event: MessageEvent) => {
         try {
           const message = JSON.parse(event.data as string) as WebSocketMessage;
-          if (message.type === 'ndef-written' && message.success && message.data?.url) {
+          if (
+            message.type === "ndef-written" &&
+            message.success &&
+            message.data?.url
+          ) {
             this.removeListener(handler);
             if (this.ws) {
-              this.ws.removeEventListener('message', messageHandler);
+              this.ws.removeEventListener("message", messageHandler);
             }
             resolve(message.data.url);
-          } else if (message.type === 'error') {
+          } else if (message.type === "error") {
             this.removeListener(handler);
             if (this.ws) {
-              this.ws.removeEventListener('message', messageHandler);
+              this.ws.removeEventListener("message", messageHandler);
             }
-            reject(new Error(message.error ?? 'Unknown error'));
+            reject(new Error(message.error ?? "Unknown error"));
           }
         } catch {
           // Ignore parse errors
@@ -718,16 +773,16 @@ class WebSocketNFCClient {
       };
 
       if (this.ws) {
-        this.ws.addEventListener('message', messageHandler);
+        this.ws.addEventListener("message", messageHandler);
       }
 
       // Timeout after 10 seconds
       setTimeout(() => {
         this.removeListener(handler);
         if (this.ws) {
-          this.ws.removeEventListener('message', messageHandler);
+          this.ws.removeEventListener("message", messageHandler);
         }
-        reject(new Error('Timeout writing NDEF'));
+        reject(new Error("Timeout writing NDEF"));
       }, 10000);
     });
   }
@@ -750,8 +805,10 @@ class WebSocketNFCClient {
    * Get user-friendly connection error message (desktop only)
    */
   private getConnectionErrorMessage(code?: number, _reason?: string): string {
-    return `NFC server connection failed (code: ${code || 'unknown'}). ` +
-      'Start the NFC server with: bun run nfc-server';
+    return (
+      `NFC server connection failed (code: ${code || "unknown"}). ` +
+      "Start the NFC server with: bun run nfc-server"
+    );
   }
 
   /**
@@ -761,7 +818,7 @@ class WebSocketNFCClient {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
     } else {
-      throw new Error('WebSocket not connected');
+      throw new Error("WebSocket not connected");
     }
   }
 
@@ -770,20 +827,23 @@ class WebSocketNFCClient {
    */
   private handleMessage(message: WebSocketMessage): void {
     switch (message.type) {
-      case 'status':
+      case "status":
         if (message.data) {
           const data = message.data;
           this.currentStatus = {
             readerConnected: Boolean(data.readerConnected),
             chipPresent: Boolean(data.chipPresent),
-            readerName: typeof data.readerName === 'string' || data.readerName === null ? data.readerName : null
+            readerName:
+              typeof data.readerName === "string" || data.readerName === null
+                ? data.readerName
+                : null,
           };
-          this.emit({ type: 'status', data: this.currentStatus });
+          this.emit({ type: "status", data: this.currentStatus });
         }
         break;
 
-      case 'error':
-        this.emit({ type: 'error', data: message.error ?? 'Unknown error' });
+      case "error":
+        this.emit({ type: "error", data: message.error ?? "Unknown error" });
         break;
 
       default:
@@ -796,7 +856,7 @@ class WebSocketNFCClient {
    * Emit event to all listeners
    */
   private emit(event: NFCClientEvent): void {
-    this.listeners.forEach(listener => {
+    this.listeners.forEach((listener) => {
       try {
         listener(event);
       } catch {
@@ -829,7 +889,7 @@ export class NFCClient {
       this.wsClient.disconnect();
       this.wsClient = undefined;
     }
-    this.emit({ type: 'disconnected' });
+    this.emit({ type: "disconnected" });
   }
 
   /**
@@ -849,11 +909,11 @@ export class NFCClient {
     if (this.wsClient) {
       return this.wsClient.getStatus();
     }
-    
+
     return {
       readerConnected: false,
       chipPresent: false,
-      readerName: null
+      readerName: null,
     };
   }
 
@@ -874,17 +934,20 @@ export class NFCClient {
     if (this.wsClient) {
       return await this.wsClient.readPublicKey(keyId);
     }
-    throw new Error('Not connected');
+    throw new Error("Not connected");
   }
 
   /**
    * Sign message with chip
    */
-  async signMessage(messageDigest: Uint8Array, keyId?: number): Promise<SorobanSignature> {
+  async signMessage(
+    messageDigest: Uint8Array,
+    keyId?: number,
+  ): Promise<SorobanSignature> {
     if (this.wsClient) {
       return await this.wsClient.signMessage(messageDigest, keyId);
     }
-    throw new Error('Not connected');
+    throw new Error("Not connected");
   }
 
   /**
@@ -894,7 +957,7 @@ export class NFCClient {
     if (this.wsClient) {
       return await this.wsClient.readNDEF();
     }
-    throw new Error('Not connected');
+    throw new Error("Not connected");
   }
 
   /**
@@ -904,7 +967,7 @@ export class NFCClient {
     if (this.wsClient) {
       return await this.wsClient.writeNDEF(url);
     }
-    throw new Error('Not connected');
+    throw new Error("Not connected");
   }
 
   /**
@@ -914,7 +977,7 @@ export class NFCClient {
     if (this.wsClient) {
       return await this.wsClient.generateKey();
     }
-    throw new Error('Not connected');
+    throw new Error("Not connected");
   }
 
   /**
@@ -924,7 +987,7 @@ export class NFCClient {
     if (this.wsClient) {
       return await this.wsClient.fetchKeyById(keyId);
     }
-    throw new Error('Not connected');
+    throw new Error("Not connected");
   }
 
   /**
@@ -951,11 +1014,11 @@ export class NFCClient {
    * Emit event
    */
   private emit(event: NFCClientEvent): void {
-    this.listeners.forEach(listener => {
+    this.listeners.forEach((listener) => {
       try {
         listener(event);
       } catch (error) {
-        console.error('Error in event listener:', error);
+        console.error("Error in event listener:", error);
       }
     });
   }
@@ -963,4 +1026,3 @@ export class NFCClient {
 
 // Export singleton instance
 export const nfcClient = new NFCClient();
-

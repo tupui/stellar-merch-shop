@@ -17,8 +17,19 @@ interface KeyManagementSectionProps {
   onKeyGenerated?: (keyInfo: KeyInfo) => void;
 }
 
-export const KeyManagementSection = ({ keyId, onKeyFetched, onKeyGenerated }: KeyManagementSectionProps) => {
-  const { connected, generatingKey, fetchingKey, generateKey, fetchKeyById, connect } = useNFC();
+export const KeyManagementSection = ({
+  keyId,
+  onKeyFetched,
+  onKeyGenerated,
+}: KeyManagementSectionProps) => {
+  const {
+    connected,
+    generatingKey,
+    fetchingKey,
+    generateKey,
+    fetchKeyById,
+    connect,
+  } = useNFC();
   const [fetchedKey, setFetchedKey] = useState<KeyInfo | null>(null);
   const [generatedKey, setGeneratedKey] = useState<KeyInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,13 +39,15 @@ export const KeyManagementSection = ({ keyId, onKeyFetched, onKeyGenerated }: Ke
       try {
         await connect();
       } catch (err) {
-        setError(`Failed to connect: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setError(
+          `Failed to connect: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
         return;
       }
     }
 
     if (isNaN(keyId) || keyId < 1 || keyId > 255) {
-      setError('Key ID must be between 1 and 255');
+      setError("Key ID must be between 1 and 255");
       return;
     }
 
@@ -45,12 +58,18 @@ export const KeyManagementSection = ({ keyId, onKeyFetched, onKeyGenerated }: Ke
       onKeyFetched?.(keyInfo);
     } catch (err) {
       if (err instanceof ChipNotPresentError) {
-        setError('No NFC chip detected. Please place the chip on the reader.');
+        setError("No NFC chip detected. Please place the chip on the reader.");
       } else {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
         // Check if it's a "key not found" error
-        if (errorMessage.includes('does not exist') || errorMessage.includes('Key not found')) {
-          setError(`Key ID ${keyId} does not exist on this chip. Generate a key first or try a different key ID.`);
+        if (
+          errorMessage.includes("does not exist") ||
+          errorMessage.includes("Key not found")
+        ) {
+          setError(
+            `Key ID ${keyId} does not exist on this chip. Generate a key first or try a different key ID.`,
+          );
         } else {
           setError(`Failed to fetch key: ${errorMessage}`);
         }
@@ -63,7 +82,9 @@ export const KeyManagementSection = ({ keyId, onKeyFetched, onKeyGenerated }: Ke
       try {
         await connect();
       } catch (err) {
-        setError(`Failed to connect: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setError(
+          `Failed to connect: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
         return;
       }
     }
@@ -75,28 +96,32 @@ export const KeyManagementSection = ({ keyId, onKeyFetched, onKeyGenerated }: Ke
       onKeyGenerated?.(keyInfo);
     } catch (err) {
       if (err instanceof ChipNotPresentError) {
-        setError('No NFC chip detected. Please place the chip on the reader.');
+        setError("No NFC chip detected. Please place the chip on the reader.");
       } else {
-        setError(`Failed to generate key: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        setError(
+          `Failed to generate key: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
       }
     }
   };
 
   return (
     <Box gap="md" direction="column" style={{ marginBottom: "32px" }}>
-
       <Text as="p" size="sm" style={{ color: "#666", marginBottom: "24px" }}>
-        Generate new keys or fetch existing keys from the NFC chip. Chips come empty and need a key to be generated first.
+        Generate new keys or fetch existing keys from the NFC chip. Chips come
+        empty and need a key to be generated first.
       </Text>
 
       {error && (
-        <Box style={{ 
-          padding: "12px", 
-          backgroundColor: "#fee", 
-          borderRadius: "4px",
-          border: "1px solid #fcc",
-          marginBottom: "16px"
-        }}>
+        <Box
+          style={{
+            padding: "12px",
+            backgroundColor: "#fee",
+            borderRadius: "4px",
+            border: "1px solid #fcc",
+            marginBottom: "16px",
+          }}
+        >
           <Text as="p" size="sm" style={{ color: "#c00" }}>
             {error}
           </Text>
@@ -104,14 +129,23 @@ export const KeyManagementSection = ({ keyId, onKeyFetched, onKeyGenerated }: Ke
       )}
 
       {/* Fetch Key Section */}
-      <Box gap="sm" direction="column" style={{ 
-        marginBottom: "24px", 
-        border: "1px solid #eee", 
-        borderRadius: "8px", 
-        padding: "20px", 
-        backgroundColor: "#fafafa" 
-      }}>
-        <Text as="h3" size="md" weight="semi-bold" style={{ marginBottom: "12px" }}>
+      <Box
+        gap="sm"
+        direction="column"
+        style={{
+          marginBottom: "24px",
+          border: "1px solid #eee",
+          borderRadius: "8px",
+          padding: "20px",
+          backgroundColor: "#fafafa",
+        }}
+      >
+        <Text
+          as="h3"
+          size="md"
+          weight="semi-bold"
+          style={{ marginBottom: "12px" }}
+        >
           Fetch Key
         </Text>
         <Text as="p" size="sm" style={{ color: "#666", marginBottom: "16px" }}>
@@ -127,28 +161,41 @@ export const KeyManagementSection = ({ keyId, onKeyFetched, onKeyGenerated }: Ke
         >
           {fetchingKey ? "Fetching..." : "Fetch Key"}
         </Button>
-        
+
         {fetchedKey && (
           <Box style={{ marginTop: "16px" }}>
-            <KeyInfoDisplay keyInfo={fetchedKey} label="Fetched Key Information" />
+            <KeyInfoDisplay
+              keyInfo={fetchedKey}
+              label="Fetched Key Information"
+            />
           </Box>
         )}
       </Box>
 
       {/* Generate Key Section */}
-      <Box gap="sm" direction="column" style={{ 
-        border: "1px solid #eee", 
-        borderRadius: "8px", 
-        padding: "20px", 
-        backgroundColor: "#fafafa" 
-      }}>
-        <Text as="h3" size="md" weight="semi-bold" style={{ marginBottom: "12px" }}>
+      <Box
+        gap="sm"
+        direction="column"
+        style={{
+          border: "1px solid #eee",
+          borderRadius: "8px",
+          padding: "20px",
+          backgroundColor: "#fafafa",
+        }}
+      >
+        <Text
+          as="h3"
+          size="md"
+          weight="semi-bold"
+          style={{ marginBottom: "12px" }}
+        >
           Generate New Key
         </Text>
         <Text as="p" size="sm" style={{ color: "#666", marginBottom: "16px" }}>
-          Generate a new keypair on the chip. The chip will return the new key ID and public key.
+          Generate a new keypair on the chip. The chip will return the new key
+          ID and public key.
         </Text>
-        
+
         <Button
           type="button"
           variant="primary"
@@ -159,14 +206,16 @@ export const KeyManagementSection = ({ keyId, onKeyFetched, onKeyGenerated }: Ke
         >
           {generatingKey ? "Generating..." : "Generate New Key"}
         </Button>
-        
+
         {generatedKey && (
           <Box style={{ marginTop: "16px" }}>
-            <KeyInfoDisplay keyInfo={generatedKey} label="Generated Key Information" />
+            <KeyInfoDisplay
+              keyInfo={generatedKey}
+              label="Generated Key Information"
+            />
           </Box>
         )}
       </Box>
     </Box>
   );
 };
-

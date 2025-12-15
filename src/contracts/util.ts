@@ -89,7 +89,7 @@ export const network: Network = {
  */
 export const getRpcUrl = (walletNetwork?: string): string => {
   const networkToUse = (walletNetwork || stellarNetwork).toUpperCase();
-  
+
   switch (networkToUse) {
     case "LOCAL":
     case "STANDALONE":
@@ -111,7 +111,7 @@ export const getRpcUrl = (walletNetwork?: string): string => {
  */
 export const getHorizonUrl = (walletNetwork?: string): string => {
   const networkToUse = (walletNetwork || stellarNetwork).toUpperCase();
-  
+
   switch (networkToUse) {
     case "LOCAL":
     case "STANDALONE":
@@ -131,14 +131,17 @@ export const getHorizonUrl = (walletNetwork?: string): string => {
 /**
  * Get network passphrase based on network
  */
-export const getNetworkPassphrase = (walletNetwork?: string, walletPassphrase?: string): string => {
+export const getNetworkPassphrase = (
+  walletNetwork?: string,
+  walletPassphrase?: string,
+): string => {
   // If wallet provides passphrase, use it (most reliable)
   if (walletPassphrase) {
     return walletPassphrase;
   }
-  
+
   const networkToUse = (walletNetwork || stellarNetwork).toUpperCase();
-  
+
   switch (networkToUse) {
     case "LOCAL":
     case "STANDALONE":
@@ -162,10 +165,10 @@ export const getNetworkPassphrase = (walletNetwork?: string, walletPassphrase?: 
  */
 export const getContractId = (walletNetwork?: string): string => {
   const networkToUse = (walletNetwork || stellarNetwork).toUpperCase();
-  
+
   let contractId: string | undefined;
   let envVarName: string;
-  
+
   switch (networkToUse) {
     case "LOCAL":
     case "STANDALONE":
@@ -182,13 +185,17 @@ export const getContractId = (walletNetwork?: string): string => {
       envVarName = "PUBLIC_STELLAR_MERCH_SHOP_CONTRACT_ID_MAINNET";
       break;
     default:
-      throw new Error(`Unknown network: ${networkToUse}. Supported networks: LOCAL, TESTNET, PUBLIC, MAINNET`);
+      throw new Error(
+        `Unknown network: ${networkToUse}. Supported networks: LOCAL, TESTNET, PUBLIC, MAINNET`,
+      );
   }
-  
-  if (!contractId || contractId.trim() === '') {
-    throw new Error(`Contract ID is not configured for network ${networkToUse}. Please set ${envVarName} environment variable.`);
+
+  if (!contractId || contractId.trim() === "") {
+    throw new Error(
+      `Contract ID is not configured for network ${networkToUse}. Please set ${envVarName} environment variable.`,
+    );
   }
-  
+
   // After the check, contractId is guaranteed to be a non-empty string
   // TypeScript should narrow, but we assert to be explicit
   return contractId as string;

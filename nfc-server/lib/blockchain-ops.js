@@ -3,7 +3,7 @@
  * Handles all operations related to the Blockchain Security 2Go application
  */
 
-import { BLOCKCHAIN_AID } from './constants.js';
+import { BLOCKCHAIN_AID } from "./constants.js";
 
 export class BlockchainOperations {
   constructor(nfcManager) {
@@ -19,51 +19,60 @@ export class BlockchainOperations {
   async selectApplication() {
     const now = Date.now();
     // Skip if recently selected (within cache timeout)
-    if (this.lastSelectedApp && (now - this.lastSelectedApp) < this.appSelectionCacheTimeout) {
+    if (
+      this.lastSelectedApp &&
+      now - this.lastSelectedApp < this.appSelectionCacheTimeout
+    ) {
       return true;
     }
-    
+
     const reader = this.nfcManager.getReader();
     if (!this.nfcManager.verifyConnection() || !reader.connection) {
-      throw new Error('Connection not available');
+      throw new Error("Connection not available");
     }
-    
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    if (!reader.connection || !this.nfcManager.getCard() || !this.nfcManager.isChipPresent()) {
-      throw new Error('Connection lost during initialization');
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    if (
+      !reader.connection ||
+      !this.nfcManager.getCard() ||
+      !this.nfcManager.isChipPresent()
+    ) {
+      throw new Error("Connection lost during initialization");
     }
-    
+
     const selectApp = Buffer.concat([
-      Buffer.from([0x00, 0xA4, 0x04, 0x00, BLOCKCHAIN_AID.length]),
+      Buffer.from([0x00, 0xa4, 0x04, 0x00, BLOCKCHAIN_AID.length]),
       BLOCKCHAIN_AID,
-      Buffer.from([0x00])
+      Buffer.from([0x00]),
     ]);
-    
+
     let response;
     try {
       response = await reader.transmit(selectApp, 40);
     } catch (error) {
-      console.error('selectApplication: Transmit failed:', error);
+      console.error("selectApplication: Transmit failed:", error);
       this.lastSelectedApp = null; // Clear cache on error
       this.nfcManager.clearCardState();
       throw new Error(`Failed to transmit SELECT command: ${error.message}`);
     }
-    
+
     if (response.length < 2) {
       this.lastSelectedApp = null; // Clear cache on error
       this.nfcManager.clearCardState();
       throw new Error(`Invalid response length: ${response.length}`);
     }
-    
+
     const status = response.slice(-2);
     if (status[0] !== 0x90 || status[1] !== 0x00) {
-      const statusHex = status.toString('hex');
+      const statusHex = status.toString("hex");
       console.error(`selectApplication: Failed with status: ${statusHex}`);
       this.lastSelectedApp = null; // Clear cache on error
-      throw new Error(`Failed to select Blockchain application: status=${statusHex}`);
+      throw new Error(
+        `Failed to select Blockchain application: status=${statusHex}`,
+      );
     }
-    
+
     this.lastSelectedApp = now; // Cache successful selection
     return true;
   }
@@ -74,63 +83,79 @@ export class BlockchainOperations {
   async getKeyInfo(keyHandle = 1) {
     const reader = this.nfcManager.getReader();
     if (!this.nfcManager.verifyConnection() || !reader.connection) {
-      throw new Error('Connection not available');
+      throw new Error("Connection not available");
     }
-    
+
     if (keyHandle < 0 || keyHandle > 255) {
       throw new Error(`Invalid keyHandle: ${keyHandle} (must be 0-255)`);
     }
-    
+
     try {
       await this.selectApplication();
-      await new Promise(resolve => setTimeout(resolve, 50));
-      
-      if (!reader.connection || !this.nfcManager.getCard() || !this.nfcManager.isChipPresent()) {
-        throw new Error('Connection lost after SELECT application');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      if (
+        !reader.connection ||
+        !this.nfcManager.getCard() ||
+        !this.nfcManager.isChipPresent()
+      ) {
+        throw new Error("Connection lost after SELECT application");
       }
-      
-      const getKeyInfo = Buffer.from([
-        0x00, 0x16, keyHandle, 0x00, 0x00
-      ]);
-      
+
+      const getKeyInfo = Buffer.from([0x00, 0x16, keyHandle, 0x00, 0x00]);
+
       const response = await reader.transmit(getKeyInfo, 255);
-      
-      if (response.length < 2 || response[response.length - 2] !== 0x90 || response[response.length - 1] !== 0x00) {
-        const statusHex = response.slice(-2).toString('hex');
-        const statusCode = response[response.length - 2] << 8 | response[response.length - 1];
-        
+
+      if (
+        response.length < 2 ||
+        response[response.length - 2] !== 0x90 ||
+        response[response.length - 1] !== 0x00
+      ) {
+        const statusHex = response.slice(-2).toString("hex");
+        const statusCode =
+          (response[response.length - 2] << 8) | response[response.length - 1];
+
         if (statusCode === 0x6a88) {
           throw new Error(`Key ID ${keyHandle} does not exist on this chip`);
         }
-        
+
         console.error(`getKeyInfo: Failed with status: ${statusHex}`);
         throw new Error(`Failed to get key info: status=${statusHex}`);
       }
-      
+
       const data = response.slice(0, response.length - 2);
-      
+
       if (data.length < 73) {
-        throw new Error(`Invalid key info response: expected at least 73 bytes (4+4+65), got ${data.length}`);
+        throw new Error(
+          `Invalid key info response: expected at least 73 bytes (4+4+65), got ${data.length}`,
+        );
       }
-      
+
       const globalCounter = data.readUInt32BE(0);
       const keyCounter = data.readUInt32BE(4);
       const publicKey = data.slice(8, 73);
-      
+
       if (publicKey.length !== 65) {
-        throw new Error(`Invalid public key length: expected 65 bytes, got ${publicKey.length}`);
+        throw new Error(
+          `Invalid public key length: expected 65 bytes, got ${publicKey.length}`,
+        );
       }
-      
-      const publicKeyHex = publicKey.toString('hex');
-      
+
+      const publicKeyHex = publicKey.toString("hex");
+
       return {
         publicKey: publicKeyHex,
         globalCounter,
-        keyCounter
+        keyCounter,
       };
     } catch (error) {
-      console.error('getKeyInfo: Error:', error);
-      if (error.message && (error.message.includes('unpowered') || error.message.includes('Connection') || error.message.includes('transmit'))) {
+      console.error("getKeyInfo: Error:", error);
+      if (
+        error.message &&
+        (error.message.includes("unpowered") ||
+          error.message.includes("Connection") ||
+          error.message.includes("transmit"))
+      ) {
         this.nfcManager.clearCardState();
       }
       throw error;
@@ -143,33 +168,46 @@ export class BlockchainOperations {
   async generateKey() {
     const reader = this.nfcManager.getReader();
     if (!this.nfcManager.verifyConnection() || !reader.connection) {
-      throw new Error('Connection not available');
+      throw new Error("Connection not available");
     }
-    
+
     try {
       await this.selectApplication();
-      await new Promise(resolve => setTimeout(resolve, 50));
-      
-      if (!reader.connection || !this.nfcManager.getCard() || !this.nfcManager.isChipPresent()) {
-        throw new Error('Connection lost after SELECT application');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      if (
+        !reader.connection ||
+        !this.nfcManager.getCard() ||
+        !this.nfcManager.isChipPresent()
+      ) {
+        throw new Error("Connection lost after SELECT application");
       }
-      
+
       const generateKey = Buffer.from([0x00, 0x02, 0x00, 0x00, 0x00]);
-      
+
       const response = await reader.transmit(generateKey, 40);
-      
-      if (response.length < 2 || response[response.length - 2] !== 0x90 || response[response.length - 1] !== 0x00) {
-        const statusHex = response.slice(-2).toString('hex');
+
+      if (
+        response.length < 2 ||
+        response[response.length - 2] !== 0x90 ||
+        response[response.length - 1] !== 0x00
+      ) {
+        const statusHex = response.slice(-2).toString("hex");
         console.error(`generateKey: Failed with status: ${statusHex}`);
         throw new Error(`Failed to generate key: status=${statusHex}`);
       }
-      
+
       const keyId = response[0];
-      
+
       return keyId;
     } catch (error) {
-      console.error('generateKey: Error:', error);
-      if (error.message && (error.message.includes('unpowered') || error.message.includes('Connection') || error.message.includes('transmit'))) {
+      console.error("generateKey: Error:", error);
+      if (
+        error.message &&
+        (error.message.includes("unpowered") ||
+          error.message.includes("Connection") ||
+          error.message.includes("transmit"))
+      ) {
         this.nfcManager.clearCardState();
       }
       throw error;
@@ -183,13 +221,13 @@ export class BlockchainOperations {
     if (!keyId || keyId < 1 || keyId > 255) {
       throw new Error(`Invalid key ID: ${keyId} (must be 1-255)`);
     }
-    
+
     const keyInfo = await this.getKeyInfo(keyId);
     return {
       keyId,
       publicKey: keyInfo.publicKey,
       globalCounter: keyInfo.globalCounter,
-      keyCounter: keyInfo.keyCounter
+      keyCounter: keyInfo.keyCounter,
     };
   }
 
@@ -199,61 +237,75 @@ export class BlockchainOperations {
   async generateSignature(keyHandle, messageDigest) {
     const reader = this.nfcManager.getReader();
     if (!this.nfcManager.verifyConnection() || !reader.connection) {
-      throw new Error('Connection not available');
+      throw new Error("Connection not available");
     }
-    
+
     if (!messageDigest || messageDigest.length !== 32) {
-      throw new Error('Message digest must be exactly 32 bytes');
+      throw new Error("Message digest must be exactly 32 bytes");
     }
-    
+
     if (keyHandle < 0 || keyHandle > 255) {
       throw new Error(`Invalid keyHandle: ${keyHandle} (must be 0-255)`);
     }
-    
+
     try {
       await this.selectApplication();
-      await new Promise(resolve => setTimeout(resolve, 50));
-      
-      if (!reader.connection || !this.nfcManager.getCard() || !this.nfcManager.isChipPresent()) {
-        throw new Error('Connection lost after SELECT application');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      if (
+        !reader.connection ||
+        !this.nfcManager.getCard() ||
+        !this.nfcManager.isChipPresent()
+      ) {
+        throw new Error("Connection lost after SELECT application");
       }
-      
+
       const generateSig = Buffer.concat([
         Buffer.from([0x00, 0x18, keyHandle, 0x00, 0x20]),
         messageDigest,
-        Buffer.from([0x00])
+        Buffer.from([0x00]),
       ]);
-      
+
       const response = await reader.transmit(generateSig, 255);
-      
-      if (response.length < 2 || response[response.length - 2] !== 0x90 || response[response.length - 1] !== 0x00) {
-        const statusHex = response.slice(-2).toString('hex');
+
+      if (
+        response.length < 2 ||
+        response[response.length - 2] !== 0x90 ||
+        response[response.length - 1] !== 0x00
+      ) {
+        const statusHex = response.slice(-2).toString("hex");
         console.error(`generateSignature: Failed with status: ${statusHex}`);
         throw new Error(`Failed to generate signature: status=${statusHex}`);
       }
-      
+
       const data = response.slice(0, response.length - 2);
-      
+
       if (data.length < 8) {
-        throw new Error(`Invalid signature response: expected at least 8 bytes (counters), got ${data.length}`);
+        throw new Error(
+          `Invalid signature response: expected at least 8 bytes (counters), got ${data.length}`,
+        );
       }
-      
+
       const globalCounter = data.readUInt32BE(0);
       const keyCounter = data.readUInt32BE(4);
       const derSignature = data.slice(8);
-      
+
       return {
         signature: derSignature,
         globalCounter,
-        keyCounter
+        keyCounter,
       };
     } catch (error) {
-      console.error('generateSignature: Error:', error);
-      if (error.message && (error.message.includes('unpowered') || error.message.includes('Connection') || error.message.includes('transmit'))) {
+      console.error("generateSignature: Error:", error);
+      if (
+        error.message &&
+        (error.message.includes("unpowered") ||
+          error.message.includes("Connection") ||
+          error.message.includes("transmit"))
+      ) {
         this.nfcManager.clearCardState();
       }
       throw error;
     }
   }
 }
-

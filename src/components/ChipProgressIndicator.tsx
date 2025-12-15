@@ -29,10 +29,18 @@ export const ChipProgressIndicator = ({
     return stepIndex <= currentIndex;
   };
 
-  const isScanning = step === 'scanning';
+  const isScanning = step === "scanning";
 
   return (
-    <Box gap="xs" style={{ marginTop: "12px", padding: "12px", backgroundColor: "#f5f5f5", borderRadius: "4px" }}>
+    <Box
+      gap="xs"
+      style={{
+        marginTop: "12px",
+        padding: "12px",
+        backgroundColor: "#f5f5f5",
+        borderRadius: "4px",
+      }}
+    >
       <Box gap="xs" direction="row" style={{ alignItems: "center" }}>
         {isScanning && (
           <div
@@ -47,10 +55,21 @@ export const ChipProgressIndicator = ({
             }}
           />
         )}
-        <Text as="p" size="sm" weight="semi-bold" style={{ color: "#333", flex: 1 }}>
+        <Text
+          as="p"
+          size="sm"
+          weight="semi-bold"
+          style={{ color: "#333", flex: 1 }}
+        >
           {stepMessage}
           {countdown !== undefined && countdown >= 0 && (
-            <span style={{ marginLeft: "8px", color: "#7c3aed", fontWeight: "bold" }}>
+            <span
+              style={{
+                marginLeft: "8px",
+                color: "#7c3aed",
+                fontWeight: "bold",
+              }}
+            >
               {countdown}s
             </span>
           )}
@@ -66,9 +85,10 @@ export const ChipProgressIndicator = ({
               borderRadius: "50%",
               backgroundColor: isStepActive(stepName) ? "#4caf50" : "#ddd",
               transition: "background-color 0.3s ease",
-              ...(isScanning && stepName === 'scanning' && {
-                animation: "pulse 1s ease-in-out infinite",
-              }),
+              ...(isScanning &&
+                stepName === "scanning" && {
+                  animation: "pulse 1s ease-in-out infinite",
+                }),
             }}
           />
         ))}

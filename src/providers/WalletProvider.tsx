@@ -76,21 +76,23 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   const updateBalances = useCallback(async () => {
     const currentAddress = addressRef.current;
     const currentNetwork = networkRef.current;
-    
+
     if (!currentAddress) {
       setBalances({});
       networkForBalancesRef.current = undefined;
       return;
     }
 
-    const normalizedNetwork = currentNetwork ? currentNetwork.toUpperCase() : currentNetwork;
+    const normalizedNetwork = currentNetwork
+      ? currentNetwork.toUpperCase()
+      : currentNetwork;
     const networkKey = `${currentAddress}:${normalizedNetwork}`;
     const lastKey = networkForBalancesRef.current;
-    
+
     if (networkKey === lastKey) {
       return;
     }
-    
+
     networkForBalancesRef.current = networkKey;
     const newBalances = await fetchBalances(currentAddress, normalizedNetwork);
     setBalances((prev) => {
@@ -103,7 +105,7 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
     const normalizedNetwork = network ? network.toUpperCase() : network;
     const addressChanged = address !== addressRef.current;
     const networkChanged = normalizedNetwork !== networkRef.current;
-    
+
     if (addressChanged || networkChanged) {
       addressRef.current = address;
       networkRef.current = normalizedNetwork;
@@ -155,14 +157,17 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
         if (!a.address) storage.setItem("walletId", "");
         const normalizedWalletNetwork = (n.network || "").toUpperCase();
         const normalizedCurrentNetwork = (network || "").toUpperCase();
-        const lastNormalizedNetwork = (lastNetworkRef.current || "").toUpperCase();
-        
+        const lastNormalizedNetwork = (
+          lastNetworkRef.current || ""
+        ).toUpperCase();
+
         const addressChanged = a.address !== address;
-        const networkChanged = normalizedWalletNetwork !== "" && 
-                               normalizedWalletNetwork !== normalizedCurrentNetwork && 
-                               normalizedWalletNetwork !== lastNormalizedNetwork;
+        const networkChanged =
+          normalizedWalletNetwork !== "" &&
+          normalizedWalletNetwork !== normalizedCurrentNetwork &&
+          normalizedWalletNetwork !== lastNormalizedNetwork;
         const passphraseChanged = n.networkPassphrase !== networkPassphrase;
-        
+
         if (addressChanged || networkChanged || passphraseChanged) {
           storage.setItem("walletAddress", a.address);
           if (addressChanged) {
@@ -175,7 +180,7 @@ export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
           }
           if (passphraseChanged) setNetworkPassphrase(n.networkPassphrase);
         }
-        
+
         if (n.network) {
           const normalizedValue = n.network.toUpperCase();
           lastNetworkRef.current = normalizedValue;

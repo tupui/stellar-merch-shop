@@ -9,7 +9,8 @@ import { getNetworkPassphrase, getRpcUrl } from "../contracts/util";
 import * as Client from "stellar_merch_shop";
 
 export const useContractClient = (contractId: string) => {
-  const { network: walletNetwork, networkPassphrase: walletPassphrase } = useWallet();
+  const { network: walletNetwork, networkPassphrase: walletPassphrase } =
+    useWallet();
 
   const contractClient = useMemo(() => {
     if (!contractId || !walletPassphrase || !walletNetwork) {
@@ -17,7 +18,10 @@ export const useContractClient = (contractId: string) => {
     }
 
     try {
-      const networkPassphrase = getNetworkPassphrase(walletNetwork, walletPassphrase);
+      const networkPassphrase = getNetworkPassphrase(
+        walletNetwork,
+        walletPassphrase,
+      );
       const rpcUrl = getRpcUrl(walletNetwork);
 
       return new Client.Client({
@@ -28,12 +32,12 @@ export const useContractClient = (contractId: string) => {
         publicKey: undefined,
       });
     } catch (error) {
-      console.error('Failed to create contract client:', error);
+      console.error("Failed to create contract client:", error);
       return null;
     }
   }, [contractId, walletNetwork, walletPassphrase]);
 
-  const isReady = contractClient !== null && contractId.trim() !== '';
+  const isReady = contractClient !== null && contractId.trim() !== "";
 
   return { contractClient, isReady };
 };

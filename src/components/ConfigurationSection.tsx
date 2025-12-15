@@ -34,15 +34,35 @@ export const ConfigurationSection = ({
   };
 
   return (
-    <Box gap="sm" direction="column" style={{ marginBottom: "24px", padding: "16px", backgroundColor: "#f9f9f9", borderRadius: "8px", border: "1px solid #e0e0e0" }}>
+    <Box
+      gap="sm"
+      direction="column"
+      style={{
+        marginBottom: "24px",
+        padding: "16px",
+        backgroundColor: "#f9f9f9",
+        borderRadius: "8px",
+        border: "1px solid #e0e0e0",
+      }}
+    >
       <Text as="p" size="md" weight="semi-bold" style={{ marginBottom: "8px" }}>
         Configuration
       </Text>
       <Text as="p" size="sm" style={{ color: "#666", marginBottom: "12px" }}>
-        Configure the key ID and contract address for contract operations. The contract ID defaults to the network's configured value but can be overridden for different collections.
+        Configure the key ID and contract address for contract operations. The
+        contract ID defaults to the network's configured value but can be
+        overridden for different collections.
       </Text>
-      <Box gap="sm" direction="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
-        <Box gap="xs" direction="column" style={{ flex: 1, minWidth: "200px", maxWidth: "250px" }}>
+      <Box
+        gap="sm"
+        direction="row"
+        style={{ alignItems: "flex-end", flexWrap: "wrap" }}
+      >
+        <Box
+          gap="xs"
+          direction="column"
+          style={{ flex: 1, minWidth: "200px", maxWidth: "250px" }}
+        >
           <Text as="p" size="sm" weight="semi-bold">
             Key ID (1-255)
           </Text>

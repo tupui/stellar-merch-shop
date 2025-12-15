@@ -18,7 +18,17 @@ export const NDEFOperationsSection = ({
   readingNDEF,
 }: NDEFOperationsSectionProps) => {
   return (
-    <Box gap="sm" direction="column" style={{ marginBottom: "24px", padding: "16px", backgroundColor: "#f9f9f9", borderRadius: "8px", border: "1px solid #e0e0e0" }}>
+    <Box
+      gap="sm"
+      direction="column"
+      style={{
+        marginBottom: "24px",
+        padding: "16px",
+        backgroundColor: "#f9f9f9",
+        borderRadius: "8px",
+        border: "1px solid #e0e0e0",
+      }}
+    >
       <Text as="p" size="md" weight="semi-bold" style={{ marginBottom: "8px" }}>
         NDEF Data
       </Text>
@@ -32,15 +42,34 @@ export const NDEFOperationsSection = ({
       >
         {readingNDEF ? "Reading NDEF..." : "Read NDEF Data"}
       </Button>
-      
+
       {ndefData !== null && (
-        <Box gap="xs" direction="column" style={{ marginTop: "12px", padding: "12px", backgroundColor: "#fff", borderRadius: "4px", border: "1px solid #ddd" }}>
+        <Box
+          gap="xs"
+          direction="column"
+          style={{
+            marginTop: "12px",
+            padding: "12px",
+            backgroundColor: "#fff",
+            borderRadius: "4px",
+            border: "1px solid #ddd",
+          }}
+        >
           <Text as="p" size="sm" weight="semi-bold" style={{ color: "#333" }}>
             {ndefData ? "NDEF URL:" : "Status:"}
           </Text>
           {ndefData ? (
             <Box gap="xs" direction="column">
-              <Code size="sm" style={{ wordBreak: "break-all", display: "block", padding: "8px", backgroundColor: "#f5f5f5", borderRadius: "4px" }}>
+              <Code
+                size="sm"
+                style={{
+                  wordBreak: "break-all",
+                  display: "block",
+                  padding: "8px",
+                  backgroundColor: "#f5f5f5",
+                  borderRadius: "4px",
+                }}
+              >
                 {ndefData}
               </Code>
               <Button
@@ -49,7 +78,7 @@ export const NDEFOperationsSection = ({
                 size="sm"
                 onClick={() => {
                   if (ndefData) {
-                    window.open(ndefData, '_blank', 'noopener,noreferrer');
+                    window.open(ndefData, "_blank", "noopener,noreferrer");
                   }
                 }}
                 style={{ marginTop: "8px" }}
@@ -58,7 +87,11 @@ export const NDEFOperationsSection = ({
               </Button>
             </Box>
           ) : (
-            <Text as="p" size="sm" style={{ color: "#666", fontStyle: "italic" }}>
+            <Text
+              as="p"
+              size="sm"
+              style={{ color: "#666", fontStyle: "italic" }}
+            >
               No NDEF data found on chip
             </Text>
           )}

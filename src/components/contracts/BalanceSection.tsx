@@ -30,20 +30,28 @@ export const BalanceSection = ({ contractId }: BalanceSectionProps) => {
     setError(null);
 
     try {
-      const tx = await contractClient.balance({
-        owner: address,
-      }, {
-        publicKey: address,
-      } as ContractCallOptions);
+      const tx = await contractClient.balance(
+        {
+          owner: address,
+        },
+        {
+          publicKey: address,
+        } as ContractCallOptions,
+      );
 
       // Simulate to get the result without sending a transaction
       const simulation = await tx.simulate();
       const result = simulation.result;
-      
-      const balanceValue = typeof result === 'bigint' ? Number(result) : (typeof result === 'number' ? result : Number(result));
+
+      const balanceValue =
+        typeof result === "bigint"
+          ? Number(result)
+          : typeof result === "number"
+            ? result
+            : Number(result);
       setBalance(balanceValue);
     } catch (err) {
-      console.error('Balance fetch error:', err);
+      console.error("Balance fetch error:", err);
       let errorMessage = "Unknown error";
       if (err instanceof Error) {
         errorMessage = err.message || String(err);
@@ -83,7 +91,10 @@ export const BalanceSection = ({ contractId }: BalanceSectionProps) => {
       ) : error ? (
         <Box gap="xs" direction="column">
           <Text as="p" size="sm" style={{ color: "#d32f2f" }}>
-            Error: {typeof error === 'string' ? error : String(error || 'Unknown error')}
+            Error:{" "}
+            {typeof error === "string"
+              ? error
+              : String(error || "Unknown error")}
           </Text>
           <Button
             type="button"
@@ -96,8 +107,13 @@ export const BalanceSection = ({ contractId }: BalanceSectionProps) => {
         </Box>
       ) : balance !== null ? (
         <Box gap="xs" direction="column">
-          <Text as="p" size="lg" weight="semi-bold" style={{ color: "#4caf50" }}>
-            {balance} NFT{balance !== 1 ? 's' : ''}
+          <Text
+            as="p"
+            size="lg"
+            weight="semi-bold"
+            style={{ color: "#4caf50" }}
+          >
+            {balance} NFT{balance !== 1 ? "s" : ""}
           </Text>
           <Button
             type="button"

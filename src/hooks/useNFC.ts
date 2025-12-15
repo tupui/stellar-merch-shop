@@ -3,26 +3,29 @@
  * Manages connection to NFC server and provides methods for chip interaction
  */
 
-import { useState, useEffect, useCallback } from 'react';
-import { nfcClient } from '../util/nfcClient';
-import type { SorobanSignature } from '../util/crypto';
-import type { KeyInfo } from '../util/nfcClient';
+import { useState, useEffect, useCallback } from "react";
+import { nfcClient } from "../util/nfcClient";
+import type { SorobanSignature } from "../util/crypto";
+import type { KeyInfo } from "../util/nfcClient";
 
 export interface UseNFCReturn {
   // Connection state
   connected: boolean;
-  
+
   // Operation state
   signing: boolean;
   readingNDEF: boolean;
   writingNDEF: boolean;
   generatingKey: boolean;
   fetchingKey: boolean;
-  
+
   // Methods
   connect: () => Promise<void>;
   readChip: (keyId?: number) => Promise<string>;
-  signWithChip: (messageDigest: Uint8Array, keyId?: number) => Promise<SorobanSignature>;
+  signWithChip: (
+    messageDigest: Uint8Array,
+    keyId?: number,
+  ) => Promise<SorobanSignature>;
   readNDEF: () => Promise<string | null>;
   writeNDEF: (url: string) => Promise<string>;
   generateKey: () => Promise<KeyInfo>;
@@ -42,11 +45,11 @@ export function useNFC(): UseNFCReturn {
 
     const handleEvent = (event: { type: string; data?: unknown }) => {
       switch (event.type) {
-        case 'connected':
+        case "connected":
           setConnected(true);
           break;
 
-        case 'disconnected':
+        case "disconnected":
           setConnected(false);
           break;
       }
@@ -59,7 +62,6 @@ export function useNFC(): UseNFCReturn {
     };
   }, []);
 
-
   const connect = useCallback(async () => {
     if (!nfcClient.isConnected()) {
       await nfcClient.connect();
@@ -67,25 +69,34 @@ export function useNFC(): UseNFCReturn {
     setConnected(nfcClient.isConnected());
   }, []);
 
-  const readChip = useCallback(async (keyId?: number): Promise<string> => {
-    if (!nfcClient.isConnected()) {
-      await connect();
-    }
-    return await nfcClient.readPublicKey(keyId);
-  }, [connect]);
+  const readChip = useCallback(
+    async (keyId?: number): Promise<string> => {
+      if (!nfcClient.isConnected()) {
+        await connect();
+      }
+      return await nfcClient.readPublicKey(keyId);
+    },
+    [connect],
+  );
 
-  const signWithChip = useCallback(async (messageDigest: Uint8Array, keyId?: number): Promise<SorobanSignature> => {
-    if (!nfcClient.isConnected()) {
-      await connect();
-    }
+  const signWithChip = useCallback(
+    async (
+      messageDigest: Uint8Array,
+      keyId?: number,
+    ): Promise<SorobanSignature> => {
+      if (!nfcClient.isConnected()) {
+        await connect();
+      }
 
-    setSigning(true);
-    try {
-      return await nfcClient.signMessage(messageDigest, keyId);
-    } finally {
-      setSigning(false);
-    }
-  }, [connect]);
+      setSigning(true);
+      try {
+        return await nfcClient.signMessage(messageDigest, keyId);
+      } finally {
+        setSigning(false);
+      }
+    },
+    [connect],
+  );
 
   const readNDEF = useCallback(async (): Promise<string | null> => {
     if (!nfcClient.isConnected()) {
@@ -100,18 +111,21 @@ export function useNFC(): UseNFCReturn {
     }
   }, [connect]);
 
-  const writeNDEF = useCallback(async (url: string): Promise<string> => {
-    if (!nfcClient.isConnected()) {
-      await connect();
-    }
+  const writeNDEF = useCallback(
+    async (url: string): Promise<string> => {
+      if (!nfcClient.isConnected()) {
+        await connect();
+      }
 
-    setWritingNDEF(true);
-    try {
-      return await nfcClient.writeNDEF(url);
-    } finally {
-      setWritingNDEF(false);
-    }
-  }, [connect]);
+      setWritingNDEF(true);
+      try {
+        return await nfcClient.writeNDEF(url);
+      } finally {
+        setWritingNDEF(false);
+      }
+    },
+    [connect],
+  );
 
   const generateKey = useCallback(async (): Promise<KeyInfo> => {
     if (!nfcClient.isConnected()) {
@@ -126,18 +140,21 @@ export function useNFC(): UseNFCReturn {
     }
   }, [connect]);
 
-  const fetchKeyById = useCallback(async (keyId: number): Promise<KeyInfo> => {
-    if (!nfcClient.isConnected()) {
-      await connect();
-    }
+  const fetchKeyById = useCallback(
+    async (keyId: number): Promise<KeyInfo> => {
+      if (!nfcClient.isConnected()) {
+        await connect();
+      }
 
-    setFetchingKey(true);
-    try {
-      return await nfcClient.fetchKeyById(keyId);
-    } finally {
-      setFetchingKey(false);
-    }
-  }, [connect]);
+      setFetchingKey(true);
+      try {
+        return await nfcClient.fetchKeyById(keyId);
+      } finally {
+        setFetchingKey(false);
+      }
+    },
+    [connect],
+  );
 
   return {
     connected,
@@ -152,7 +169,6 @@ export function useNFC(): UseNFCReturn {
     readNDEF,
     writeNDEF,
     generateKey,
-    fetchKeyById
+    fetchKeyById,
   };
 }
-

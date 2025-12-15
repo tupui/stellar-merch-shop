@@ -1,20 +1,18 @@
 {
-  "name": "scaffold-stellar-frontend",
+  "name": "stellar-merch-store-admin",
   "type": "module",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "npm start",
+    "dev": "bun run start",
     "start": "concurrently --kill-others-on-fail --names stellar,vite -c gray,green --pad-prefix \"stellar scaffold watch --build-clients\" \"vite\"",
     "nfc-server": "cd nfc-server && node index.js",
-    "check-chip": "cd nfc-server && node check-chip-capabilities.js",
-    "dev:with-nfc": "concurrently --kill-others-on-fail --names nfc,stellar,vite -c blue,gray,green \"npm run nfc-server\" \"stellar scaffold watch --build-clients\" \"vite\"",
+    "dev:with-nfc": "concurrently --kill-others-on-fail --names nfc,stellar,vite -c blue,gray,green \"bun run nfc-server\" \"stellar scaffold watch --build-clients\" \"vite\"",
     "build": "tsc -b && vite build",
-    "install:contracts": "npm install --workspace=packages && npm run build --workspace=packages",
+    "install:contracts": "bun install --workspace=packages && bun run build --workspace=packages",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier . --write",
-    "prepare": "husky"
+    "format": "prettier . --write"
   },
   "workspaces": [
     "packages/*"
@@ -22,7 +20,6 @@
   "dependencies": {
     "@creit.tech/stellar-wallets-kit": "^1.9.5",
     "@noble/secp256k1": "^3.0.0",
-    "@ownerchip/blockchain-sdk-dev": "^0.1.17",
     "@stellar/design-system": "^3.2.6",
     "@stellar/stellar-sdk": "^14.4.2",
     "@stellar/stellar-xdr-json": "^23.0.0",
@@ -50,7 +47,6 @@
     "eslint-plugin-react-x": "^2.3.12",
     "glob": "^11.1.0",
     "globals": "^16.5.0",
-    "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "prettier": "3.6.2",
     "typescript": "~5.9.3",

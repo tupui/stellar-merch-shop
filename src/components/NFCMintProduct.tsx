@@ -19,7 +19,7 @@ import { ClaimSection } from "./contracts/ClaimSection";
 import { BalanceSection } from "./contracts/BalanceSection";
 import { ChipNotPresentError } from "../util/nfcClient";
 
-type Tab = 'mint' | 'transfer' | 'claim' | 'balance';
+type Tab = "mint" | "transfer" | "claim" | "balance";
 
 export const NFCMintProduct = () => {
   const { address, network: walletNetwork } = useWallet();
@@ -27,7 +27,7 @@ export const NFCMintProduct = () => {
   const { contractId, setContractId } = useContractId(walletNetwork);
   const [selectedKeyId, setSelectedKeyId] = useState<string>("1");
   const [ndefData, setNdefData] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('mint');
+  const [activeTab, setActiveTab] = useState<Tab>("mint");
 
   // Auto-connect to NFC server on component mount
   useEffect(() => {
@@ -49,9 +49,11 @@ export const NFCMintProduct = () => {
     } catch (err) {
       if (err instanceof ChipNotPresentError) {
         setNdefData(null);
-        alert('No NFC chip detected. Please place the chip on the reader.');
+        alert("No NFC chip detected. Please place the chip on the reader.");
       } else {
-        alert(`Failed to read NDEF: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        alert(
+          `Failed to read NDEF: ${err instanceof Error ? err.message : "Unknown error"}`,
+        );
       }
     }
   };
@@ -95,37 +97,69 @@ export const NFCMintProduct = () => {
         <Box gap="sm" direction="row">
           <Button
             type="button"
-            variant={activeTab === 'mint' ? 'primary' : 'tertiary'}
+            variant={activeTab === "mint" ? "primary" : "tertiary"}
             size="md"
-            onClick={() => setActiveTab('mint')}
-            style={activeTab === 'mint' ? { marginBottom: "-1px", borderBottom: "2px solid", borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)" } : undefined}
+            onClick={() => setActiveTab("mint")}
+            style={
+              activeTab === "mint"
+                ? {
+                    marginBottom: "-1px",
+                    borderBottom: "2px solid",
+                    borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)",
+                  }
+                : undefined
+            }
           >
             Mint
           </Button>
           <Button
             type="button"
-            variant={activeTab === 'transfer' ? 'primary' : 'tertiary'}
+            variant={activeTab === "transfer" ? "primary" : "tertiary"}
             size="md"
-            onClick={() => setActiveTab('transfer')}
-            style={activeTab === 'transfer' ? { marginBottom: "-1px", borderBottom: "2px solid", borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)" } : undefined}
+            onClick={() => setActiveTab("transfer")}
+            style={
+              activeTab === "transfer"
+                ? {
+                    marginBottom: "-1px",
+                    borderBottom: "2px solid",
+                    borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)",
+                  }
+                : undefined
+            }
           >
             Transfer
           </Button>
           <Button
             type="button"
-            variant={activeTab === 'claim' ? 'primary' : 'tertiary'}
+            variant={activeTab === "claim" ? "primary" : "tertiary"}
             size="md"
-            onClick={() => setActiveTab('claim')}
-            style={activeTab === 'claim' ? { marginBottom: "-1px", borderBottom: "2px solid", borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)" } : undefined}
+            onClick={() => setActiveTab("claim")}
+            style={
+              activeTab === "claim"
+                ? {
+                    marginBottom: "-1px",
+                    borderBottom: "2px solid",
+                    borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)",
+                  }
+                : undefined
+            }
           >
             Claim
           </Button>
           <Button
             type="button"
-            variant={activeTab === 'balance' ? 'primary' : 'tertiary'}
+            variant={activeTab === "balance" ? "primary" : "tertiary"}
             size="md"
-            onClick={() => setActiveTab('balance')}
-            style={activeTab === 'balance' ? { marginBottom: "-1px", borderBottom: "2px solid", borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)" } : undefined}
+            onClick={() => setActiveTab("balance")}
+            style={
+              activeTab === "balance"
+                ? {
+                    marginBottom: "-1px",
+                    borderBottom: "2px solid",
+                    borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)",
+                  }
+                : undefined
+            }
           >
             Balance
           </Button>
@@ -133,16 +167,28 @@ export const NFCMintProduct = () => {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'mint' && (
-        <MintSection key={`mint-${contractId}`} keyId={selectedKeyId} contractId={contractId} />
+      {activeTab === "mint" && (
+        <MintSection
+          key={`mint-${contractId}`}
+          keyId={selectedKeyId}
+          contractId={contractId}
+        />
       )}
-      {activeTab === 'transfer' && (
-        <TransferSection key={`transfer-${contractId}`} keyId={selectedKeyId} contractId={contractId} />
+      {activeTab === "transfer" && (
+        <TransferSection
+          key={`transfer-${contractId}`}
+          keyId={selectedKeyId}
+          contractId={contractId}
+        />
       )}
-      {activeTab === 'claim' && (
-        <ClaimSection key={`claim-${contractId}`} keyId={selectedKeyId} contractId={contractId} />
+      {activeTab === "claim" && (
+        <ClaimSection
+          key={`claim-${contractId}`}
+          keyId={selectedKeyId}
+          contractId={contractId}
+        />
       )}
-      {activeTab === 'balance' && (
+      {activeTab === "balance" && (
         <BalanceSection key={`balance-${contractId}`} contractId={contractId} />
       )}
     </Box>

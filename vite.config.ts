@@ -19,7 +19,10 @@ export default defineConfig(() => {
     ],
     resolve: {
       alias: {
-        "stellar_merch_shop": path.resolve(__dirname, "./packages/stellar_merch_shop/dist/index.js"),
+        stellar_merch_shop: path.resolve(
+          __dirname,
+          "./packages/stellar_merch_shop/dist/index.js",
+        ),
       },
     },
     build: {

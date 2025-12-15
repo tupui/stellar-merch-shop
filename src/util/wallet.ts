@@ -87,7 +87,7 @@ export const fetchBalances = async (address: string, network?: string) => {
     const horizon = new Horizon.Server(horizonUrl, {
       allowHttp: networkToUse === "LOCAL" || networkToUse === "STANDALONE",
     });
-    
+
     const { balances } = await horizon.accounts().accountId(address).call();
     const mapped = balances.reduce((acc, b) => {
       b.balance = formatter.format(Number(b.balance));

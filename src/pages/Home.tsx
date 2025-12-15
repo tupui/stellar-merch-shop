@@ -9,8 +9,8 @@ const Home: React.FC = () => (
         Welcome to the Stellar Merch Shop app!
       </Text>
       <Text as="p" size="md">
-        This app integrates with NFC chips to mint NFTs linked to physical products.
-        Place your chip on the reader to get started.
+        This app integrates with NFC chips to mint NFTs linked to physical
+        products. Place your chip on the reader to get started.
       </Text>
       <NFCMintProduct />
     </Layout.Inset>
@@ -18,4 +18,3 @@ const Home: React.FC = () => (
 );
 
 export default Home;
-

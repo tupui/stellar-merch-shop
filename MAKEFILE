@@ -1,0 +1,58 @@
+.PHONY: help install contract_build contract_test contract_deploy contract_help
+.DEFAULT_GOAL := help
+SHELL:=/bin/bash
+
+ifndef network
+   override network = testnet
+endif
+
+ifndef wasm
+override wasm = target/wasm32v1-none/release/stellar_merch_shop.wasm
+endif
+
+# Add help text after each target name starting with '\#\#'
+help:   ## show this help
+	@echo -e "Help for this makefile\n"
+	@echo "Possible commands are:"
+	@grep -h "##" $(MAKEFILE_LIST) | grep -v grep | sed -e 's/\(.*\):.*##\(.*\)/    \1: \2/'
+
+install:  ## install Rust and Soroban-CLI
+	# uv for the pre-push hook
+	curl -LsSf https://astral.sh/uv/install.sh | sh
+	# install Rust
+	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh && \
+	# install Soroban and config
+	rustup target add wasm32v1-none && \
+	cargo install --locked stellar-cli
+
+# --------- CONTRACT BUILD/TEST/DEPLOY --------- #
+
+contract_build:
+	stellar contract build --optimize
+	@ls -l target/wasm32v1-none/release/*.wasm
+
+contract_test:
+	cargo test
+
+contract_bindings: contract_build  ## Create bindings
+	stellar contract bindings typescript \
+		--network $(network) \
+		--wasm $(wasm) \
+		--output-dir packages/stellar_merch_shop \
+		--overwrite && \
+	cd packages/stellar_merch_shop && \
+	bun run build && \
+	cd ../.. && \
+	bun format
+
+contract_deploy:  ## Deploy Soroban contract to testnet
+	stellar contract deploy \
+  		--wasm $(wasm) \
+  		--source-account me \
+  		--network $(network) \
+  		-- \
+  		--admin me \
+  		--name shirt --symbol cmp1 --max_tokens 100 \
+  		--uri ipfs://QmWXJXRdExse2YHRY21Wvh4pjRxNRQcWVhcKw4DLVnqGq \
+  		> .config/stellar/stellar_merch_shop_$(network)_id && \
+  	cat .config/stellar/stellar_merch_shop_$(network)_id

@@ -2,7 +2,7 @@
  * Type definitions for contract client calls
  */
 
-import type { MethodOptions } from '@stellar/stellar-sdk/contract';
+import type { MethodOptions } from "@stellar/stellar-sdk/contract";
 
 /**
  * Options for contract method calls that require signing

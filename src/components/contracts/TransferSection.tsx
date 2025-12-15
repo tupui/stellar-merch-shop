@@ -16,7 +16,14 @@ import { getNetworkPassphrase } from "../../contracts/util";
 import { handleChipError, formatChipError } from "../../util/chipErrorHandler";
 import type { ContractCallOptions } from "../../types/contract";
 
-type TransferStep = 'idle' | 'reading' | 'signing' | 'recovering' | 'calling' | 'submitting' | 'confirming';
+type TransferStep =
+  | "idle"
+  | "reading"
+  | "signing"
+  | "recovering"
+  | "calling"
+  | "submitting"
+  | "confirming";
 
 interface TransferSectionProps {
   keyId: string;
@@ -29,37 +36,50 @@ interface TransferResult {
   error?: string;
 }
 
-export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => {
-  const { address, updateBalances, signTransaction, network: walletNetwork, networkPassphrase: walletPassphrase } = useWallet();
+export const TransferSection = ({
+  keyId,
+  contractId,
+}: TransferSectionProps) => {
+  const {
+    address,
+    updateBalances,
+    signTransaction,
+    network: walletNetwork,
+    networkPassphrase: walletPassphrase,
+  } = useWallet();
   const { connected, connect, readChip } = useNFC();
   const { authenticateWithChip } = useChipAuth();
   const { contractClient, isReady } = useContractClient(contractId);
   const [transferring, setTransferring] = useState(false);
-  const [transferStep, setTransferStep] = useState<TransferStep>('idle');
+  const [transferStep, setTransferStep] = useState<TransferStep>("idle");
   const [recipientAddress, setRecipientAddress] = useState("");
   const [tokenId, setTokenId] = useState("");
   const [result, setResult] = useState<TransferResult>();
 
-  const chipSteps: TransferStep[] = ['reading', 'signing', 'recovering'];
-  const blockchainSteps: TransferStep[] = ['calling', 'submitting', 'confirming'];
+  const chipSteps: TransferStep[] = ["reading", "signing", "recovering"];
+  const blockchainSteps: TransferStep[] = [
+    "calling",
+    "submitting",
+    "confirming",
+  ];
   const allSteps: TransferStep[] = [...chipSteps, ...blockchainSteps];
 
   const getStepMessage = (step: TransferStep): string => {
     switch (step) {
-      case 'reading':
-        return 'Reading chip public key...';
-      case 'signing':
-        return 'Waiting for chip signature...';
-      case 'recovering':
-        return 'Determining recovery ID...';
-      case 'calling':
-        return 'Preparing transaction...';
-      case 'submitting':
-        return 'Sending to blockchain...';
-      case 'confirming':
-        return 'Confirming transaction...';
+      case "reading":
+        return "Reading chip public key...";
+      case "signing":
+        return "Waiting for chip signature...";
+      case "recovering":
+        return "Determining recovery ID...";
+      case "calling":
+        return "Preparing transaction...";
+      case "submitting":
+        return "Sending to blockchain...";
+      case "confirming":
+        return "Confirming transaction...";
       default:
-        return 'Processing...';
+        return "Processing...";
     }
   };
 
@@ -74,20 +94,22 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
   const handleTransfer = async () => {
     if (!address) return;
     if (!isReady || !contractClient) {
-      throw new Error('Contract client is not ready. Please check your contract ID.');
+      throw new Error(
+        "Contract client is not ready. Please check your contract ID.",
+      );
     }
 
     if (!recipientAddress.trim()) {
-      throw new Error('Recipient address is required');
+      throw new Error("Recipient address is required");
     }
 
     if (!tokenId.trim()) {
-      throw new Error('Token ID is required');
+      throw new Error("Token ID is required");
     }
 
     setTransferring(true);
     setResult(undefined);
-    setTransferStep('reading');
+    setTransferStep("reading");
 
     try {
       // Ensure we're connected to NFC server
@@ -98,23 +120,26 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
       // Validate keyId
       const keyIdNum = parseInt(keyId, 10);
       if (isNaN(keyIdNum) || keyIdNum < 1 || keyIdNum > 255) {
-        throw new Error('Key ID must be between 1 and 255');
+        throw new Error("Key ID must be between 1 and 255");
       }
 
       if (!walletPassphrase) {
-        throw new Error('Network passphrase is required');
+        throw new Error("Network passphrase is required");
       }
 
       const tokenIdNum = BigInt(tokenId.trim());
 
       // Get network-specific settings
-      const networkPassphraseToUse = getNetworkPassphrase(walletNetwork, walletPassphrase);
-      
+      const networkPassphraseToUse = getNetworkPassphrase(
+        walletNetwork,
+        walletPassphrase,
+      );
+
       // Proceed with chip operations
       const chipPublicKeyHex = await readChip(keyIdNum);
       const { hexToBytes } = await import("../../util/crypto");
       const chipPublicKeyBytes = hexToBytes(chipPublicKeyHex);
-      
+
       // Get current nonce from contract
       let currentNonce = 0;
       try {
@@ -124,7 +149,7 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
           },
           {
             publicKey: address,
-          } as ContractCallOptions
+          } as ContractCallOptions,
         );
         currentNonce = (nonceResult.result as number) || 0;
       } catch (err) {
@@ -132,26 +157,26 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
         // Nonce fetch failed, defaulting to 0 (first use)
         currentNonce = 0;
       }
-      
+
       // Use next nonce (must be greater than stored)
       const nonce = currentNonce + 1;
 
       // Create SEP-53 message for transfer
       const { message, messageHash } = await createSEP53Message(
         contractId,
-        'transfer',
+        "transfer",
         [address, recipientAddress.trim(), tokenIdNum.toString()],
         nonce,
-        networkPassphraseToUse
+        networkPassphraseToUse,
       );
 
       // Authenticate with chip
-      setTransferStep('signing');
+      setTransferStep("signing");
       const authResult = await authenticateWithChip(keyIdNum, messageHash);
 
       // Chip operations complete - close scanning UI
       // Now move to blockchain operations
-      setTransferStep('calling');
+      setTransferStep("calling");
       const tx = await contractClient.transfer(
         {
           from: address,
@@ -165,16 +190,16 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
         },
         {
           publicKey: address,
-        } as ContractCallOptions
+        } as ContractCallOptions,
       );
 
       // Sign and send transaction
-      setTransferStep('submitting');
+      setTransferStep("submitting");
       await tx.signAndSend({ signTransaction, force: true });
 
-      setTransferStep('confirming');
+      setTransferStep("confirming");
       // Wait a moment for confirmation
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       setResult({
         success: true,
@@ -183,7 +208,7 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
 
       await updateBalances();
     } catch (err) {
-      console.error('Transfer error:', err);
+      console.error("Transfer error:", err);
       const errorResult = handleChipError(err);
       setResult({
         success: false,
@@ -191,7 +216,7 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
       });
     } finally {
       setTransferring(false);
-      setTransferStep('idle');
+      setTransferStep("idle");
     }
   };
 
@@ -267,7 +292,9 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
               ✗ Transfer Failed
             </Text>
             <Text as="p" size="sm" style={{ color: "#666" }}>
-              {typeof result.error === 'string' ? result.error : String(result.error || 'Unknown error')}
+              {typeof result.error === "string"
+                ? result.error
+                : String(result.error || "Unknown error")}
             </Text>
             <Button
               type="button"
@@ -283,7 +310,12 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
           <Box gap="sm" direction="column" style={{ marginTop: "12px" }}>
             <Button
               type="submit"
-              disabled={transferring || !isReady || !recipientAddress.trim() || !tokenId.trim()}
+              disabled={
+                transferring ||
+                !isReady ||
+                !recipientAddress.trim() ||
+                !tokenId.trim()
+              }
               isLoading={transferring}
               variant="primary"
               size="md"
@@ -301,8 +333,21 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
                   />
                 )}
                 {isBlockchainOperation(transferStep) && (
-                  <Box gap="xs" style={{ marginTop: "12px", padding: "12px", backgroundColor: "#e3f2fd", borderRadius: "4px" }}>
-                    <Text as="p" size="sm" weight="semi-bold" style={{ color: "#1976d2" }}>
+                  <Box
+                    gap="xs"
+                    style={{
+                      marginTop: "12px",
+                      padding: "12px",
+                      backgroundColor: "#e3f2fd",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    <Text
+                      as="p"
+                      size="sm"
+                      weight="semi-bold"
+                      style={{ color: "#1976d2" }}
+                    >
                       {getStepMessage(transferStep)}
                     </Text>
                     <Box gap="xs" direction="row" style={{ marginTop: "4px" }}>
@@ -313,7 +358,11 @@ export const TransferSection = ({ keyId, contractId }: TransferSectionProps) => 
                             width: "8px",
                             height: "8px",
                             borderRadius: "50%",
-                            backgroundColor: blockchainSteps.indexOf(transferStep) >= blockchainSteps.indexOf(stepName) ? "#1976d2" : "#ddd",
+                            backgroundColor:
+                              blockchainSteps.indexOf(transferStep) >=
+                              blockchainSteps.indexOf(stepName)
+                                ? "#1976d2"
+                                : "#ddd",
                             transition: "background-color 0.3s ease",
                           }}
                         />

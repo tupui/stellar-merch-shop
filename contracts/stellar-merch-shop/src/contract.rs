@@ -213,29 +213,32 @@ impl NFCtoNFTContract for StellarMerchShop {
 }
 
 /// Convert a u64 to its decimal string representation as Bytes
-fn u64_to_decimal_bytes(e: &Env, mut num: u64) -> Bytes {
-    if num == 0 {
+/// Implementation inspired by OpenZeppelin's audited Strings.toString()
+fn u64_to_decimal_bytes(e: &Env, mut value: u64) -> Bytes {
+    if value == 0 {
         return Bytes::from_slice(e, b"0");
     }
 
-    // Maximum digits for u64 is 20 (2^64 - 1 = 18446744073709551615)
-    let mut digits = [0u8; 20];
-    let mut len = 0;
-
-    while num > 0 {
-        digits[len] = b'0' + (num % 10) as u8;
-        len += 1;
-        num /= 10;
+    // Count digits (equivalent to log10(value) + 1 in no_std)
+    let mut temp = value;
+    let mut length = 0;
+    while temp > 0 {
+        length += 1;
+        temp /= 10;
     }
 
-    // Reverse the digits since we collected them in reverse order
-    for i in 0..len / 2 {
-        let temp = digits[i];
-        digits[i] = digits[len - 1 - i];
-        digits[len - 1 - i] = temp;
+    // Allocate buffer with max size (20 for u64)
+    let mut buffer = [0u8; 20];
+
+    // Fill from right to left (most significant digit first)
+    let mut i = length;
+    while value > 0 {
+        i -= 1;
+        buffer[i] = b'0' + (value % 10) as u8;
+        value /= 10;
     }
 
-    Bytes::from_slice(e, &digits[..len])
+    Bytes::from_slice(e, &buffer[..length])
 }
 
 /// Common function to verify chip signature
