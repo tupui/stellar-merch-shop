@@ -6,18 +6,18 @@
 import { useState } from "react";
 import { Button, Text, Code } from "@stellar/design-system";
 import { Box } from "../layout/Box";
-import { ChipProgressIndicator } from "../ChipProgressIndicator";
+import { OperationProgress } from "../OperationProgress";
 import { useWallet } from "../../hooks/useWallet";
 import { useNFC } from "../../hooks/useNFC";
 import { useChipAuth } from "../../hooks/useChipAuth";
 import { useContractClient } from "../../hooks/useContractClient";
+import { useOperationSteps } from "../../hooks/useOperationSteps";
+import { useErrorHandler } from "../../hooks/useErrorHandler";
 import { createSEP53Message } from "../../util/crypto";
 import { getNetworkPassphrase } from "../../contracts/util";
-import { handleChipError, formatChipError } from "../../util/chipErrorHandler";
 import type { ContractCallOptions } from "../../types/contract";
 
 type MintStep =
-  | "idle"
   | "reading"
   | "signing"
   | "recovering"
@@ -40,6 +40,29 @@ interface MintResult {
   error?: string;
 }
 
+const MINT_STEP_DEFINITIONS: Record<MintStep, { message: string; category: "chip" | "blockchain" | "other" }> = {
+  reading: { message: "Reading chip public key...", category: "chip" },
+  signing: { message: "Waiting for chip signature...", category: "chip" },
+  recovering: { message: "Determining recovery ID...", category: "chip" },
+  calling: { message: "Preparing transaction...", category: "blockchain" },
+  submitting: { message: "Sending to blockchain...", category: "blockchain" },
+  confirming: { message: "Confirming transaction...", category: "blockchain" },
+  "writing-ndef": { message: "Writing NDEF URL to chip...", category: "chip" },
+};
+
+const MINT_STEPS: MintStep[] = [
+  "reading",
+  "signing",
+  "recovering",
+  "calling",
+  "submitting",
+  "confirming",
+  "writing-ndef",
+];
+
+const CHIP_STEPS = MINT_STEPS.filter(step => MINT_STEP_DEFINITIONS[step].category === "chip");
+const BLOCKCHAIN_STEPS = MINT_STEPS.filter(step => MINT_STEP_DEFINITIONS[step].category === "blockchain");
+
 export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
   const {
     address,
@@ -51,46 +74,18 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
   const { connected, connect, writeNDEF } = useNFC();
   const { authenticateWithChip } = useChipAuth();
   const { contractClient, isReady } = useContractClient(contractId);
+  const { handleError } = useErrorHandler();
   const [minting, setMinting] = useState(false);
-  const [mintStep, setMintStep] = useState<MintStep>("idle");
   const [result, setResult] = useState<MintResult>();
 
-  const chipSteps: MintStep[] = ["reading", "signing", "recovering"];
-  const blockchainSteps: MintStep[] = ["calling", "submitting", "confirming"];
-  const allSteps: MintStep[] = [
-    ...chipSteps,
-    ...blockchainSteps,
-    "writing-ndef",
-  ];
-
-  const getStepMessage = (step: MintStep): string => {
-    switch (step) {
-      case "reading":
-        return "Reading chip public key...";
-      case "signing":
-        return "Waiting for chip signature...";
-      case "recovering":
-        return "Determining recovery ID...";
-      case "calling":
-        return "Preparing transaction...";
-      case "submitting":
-        return "Sending to blockchain...";
-      case "confirming":
-        return "Confirming transaction...";
-      case "writing-ndef":
-        return "Writing NDEF URL to chip...";
-      default:
-        return "Processing...";
-    }
-  };
-
-  const isChipOperation = (step: MintStep): boolean => {
-    return chipSteps.includes(step);
-  };
-
-  const isBlockchainOperation = (step: MintStep): boolean => {
-    return blockchainSteps.includes(step);
-  };
+  const {
+    currentStep: mintStep,
+    setStep: setMintStep,
+    clearStep,
+    getStepMessage,
+    isChipOperation,
+    isBlockchainOperation,
+  } = useOperationSteps(MINT_STEPS, MINT_STEP_DEFINITIONS);
 
   const handleMint = async () => {
     if (!address) return;
@@ -190,14 +185,14 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
       await updateBalances();
     } catch (err) {
       console.error("Minting error:", err);
-      const errorResult = handleChipError(err);
+      const errorInfo = handleError(err);
       setResult({
         success: false,
-        error: formatChipError(errorResult),
+        error: errorInfo.message,
       });
     } finally {
       setMinting(false);
-      setMintStep("idle");
+      clearStep();
     }
   };
 
@@ -309,52 +304,23 @@ export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
             Mint NFT with Chip
           </Button>
 
-          {minting && (
+          {minting && mintStep && (
             <>
               {isChipOperation(mintStep) && (
-                <ChipProgressIndicator
+                <OperationProgress
                   step={mintStep}
                   stepMessage={getStepMessage(mintStep)}
-                  steps={chipSteps}
+                  steps={CHIP_STEPS}
+                  type="chip"
                 />
               )}
               {isBlockchainOperation(mintStep) && (
-                <Box
-                  gap="xs"
-                  style={{
-                    marginTop: "12px",
-                    padding: "12px",
-                    backgroundColor: "#e3f2fd",
-                    borderRadius: "4px",
-                  }}
-                >
-                  <Text
-                    as="p"
-                    size="sm"
-                    weight="semi-bold"
-                    style={{ color: "#1976d2" }}
-                  >
-                    {getStepMessage(mintStep)}
-                  </Text>
-                  <Box gap="xs" direction="row" style={{ marginTop: "4px" }}>
-                    {blockchainSteps.map((stepName) => (
-                      <div
-                        key={stepName}
-                        style={{
-                          width: "8px",
-                          height: "8px",
-                          borderRadius: "50%",
-                          backgroundColor:
-                            blockchainSteps.indexOf(mintStep) >=
-                            blockchainSteps.indexOf(stepName)
-                              ? "#1976d2"
-                              : "#ddd",
-                          transition: "background-color 0.3s ease",
-                        }}
-                      />
-                    ))}
-                  </Box>
-                </Box>
+                <OperationProgress
+                  step={mintStep}
+                  stepMessage={getStepMessage(mintStep)}
+                  steps={BLOCKCHAIN_STEPS}
+                  type="blockchain"
+                />
               )}
               {mintStep === "writing-ndef" && (
                 <Box

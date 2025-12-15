@@ -241,6 +241,7 @@ export const TransferSection = ({
             Recipient Address
           </Text>
           <Input
+            id="recipient-address"
             type="text"
             value={recipientAddress}
             onChange={(e) => setRecipientAddress(e.target.value)}
@@ -255,6 +256,7 @@ export const TransferSection = ({
             Token ID
           </Text>
           <Input
+            id="token-id"
             type="text"
             value={tokenId}
             onChange={(e) => setTokenId(e.target.value)}

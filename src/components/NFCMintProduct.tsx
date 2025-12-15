@@ -1,15 +1,17 @@
 /**
  * NFC Mint Product Component
  * Main container that orchestrates all contract operations
- * Uses tabs/sections for: Mint, Transfer, Balance
+ * Uses tabs/sections for: Mint, Transfer, Claim, Balance
  */
 
 import { useState, useEffect } from "react";
-import { Button, Text } from "@stellar/design-system";
+import { Text } from "@stellar/design-system";
 import { useWallet } from "../hooks/useWallet";
 import { useNFC } from "../hooks/useNFC";
 import { useContractId } from "../hooks/useContractId";
+import { useNotification } from "../hooks/useNotification";
 import { Box } from "./layout/Box";
+import { Tabs } from "./layout/Tabs";
 import { ConfigurationSection } from "./ConfigurationSection";
 import { NDEFOperationsSection } from "./NDEFOperationsSection";
 import { KeyManagementSection } from "./KeyManagementSection";
@@ -19,15 +21,31 @@ import { ClaimSection } from "./contracts/ClaimSection";
 import { BalanceSection } from "./contracts/BalanceSection";
 import { ChipNotPresentError } from "../util/nfcClient";
 
-type Tab = "mint" | "transfer" | "claim" | "balance";
+type TabId = "mint" | "transfer" | "claim" | "balance";
+
+const TABS: Array<{ id: TabId; label: string }> = [
+  { id: "mint", label: "Mint" },
+  { id: "transfer", label: "Transfer" },
+  { id: "claim", label: "Claim" },
+  { id: "balance", label: "Balance" },
+];
+
+/**
+ * Parse key ID string to number, defaulting to 1 for invalid inputs
+ */
+const parseKeyId = (keyId: string): number => {
+  const parsed = parseInt(keyId, 10);
+  return isNaN(parsed) ? 1 : parsed;
+};
 
 export const NFCMintProduct = () => {
   const { address, network: walletNetwork } = useWallet();
   const { connected, connect, readNDEF, readingNDEF } = useNFC();
   const { contractId, setContractId } = useContractId(walletNetwork);
+  const { addNotification } = useNotification();
   const [selectedKeyId, setSelectedKeyId] = useState<string>("1");
   const [ndefData, setNdefData] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("mint");
+  const [activeTab, setActiveTab] = useState<TabId>("mint");
 
   // Auto-connect to NFC server on component mount
   useEffect(() => {
@@ -46,15 +64,17 @@ export const NFCMintProduct = () => {
     try {
       const url = await readNDEF();
       setNdefData(url);
-    } catch (err) {
-      if (err instanceof ChipNotPresentError) {
-        setNdefData(null);
-        alert("No NFC chip detected. Please place the chip on the reader.");
-      } else {
-        alert(
-          `Failed to read NDEF: ${err instanceof Error ? err.message : "Unknown error"}`,
-        );
+      if (url) {
+        addNotification("NDEF data read successfully", "success");
       }
+    } catch (err) {
+      setNdefData(null);
+
+      const errorMessage = err instanceof ChipNotPresentError
+        ? "No NFC chip detected. Please place the chip on the reader."
+        : `Failed to read NDEF: ${err instanceof Error ? err.message : "Unknown error"}`;
+
+      addNotification(errorMessage, "error");
     }
   };
 
@@ -79,10 +99,7 @@ export const NFCMintProduct = () => {
 
       {/* Key Management Section */}
       <KeyManagementSection
-        keyId={(() => {
-          const parsed = parseInt(selectedKeyId, 10);
-          return isNaN(parsed) ? 1 : parsed;
-        })()}
+        keyId={parseKeyId(selectedKeyId)}
       />
 
       {/* NDEF Operations Section */}
@@ -93,78 +110,11 @@ export const NFCMintProduct = () => {
       />
 
       {/* Tab Navigation */}
-      <div style={{ borderBottom: "1px solid #e0e0e0", marginBottom: "24px" }}>
-        <Box gap="sm" direction="row">
-          <Button
-            type="button"
-            variant={activeTab === "mint" ? "primary" : "tertiary"}
-            size="md"
-            onClick={() => setActiveTab("mint")}
-            style={
-              activeTab === "mint"
-                ? {
-                    marginBottom: "-1px",
-                    borderBottom: "2px solid",
-                    borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)",
-                  }
-                : undefined
-            }
-          >
-            Mint
-          </Button>
-          <Button
-            type="button"
-            variant={activeTab === "transfer" ? "primary" : "tertiary"}
-            size="md"
-            onClick={() => setActiveTab("transfer")}
-            style={
-              activeTab === "transfer"
-                ? {
-                    marginBottom: "-1px",
-                    borderBottom: "2px solid",
-                    borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)",
-                  }
-                : undefined
-            }
-          >
-            Transfer
-          </Button>
-          <Button
-            type="button"
-            variant={activeTab === "claim" ? "primary" : "tertiary"}
-            size="md"
-            onClick={() => setActiveTab("claim")}
-            style={
-              activeTab === "claim"
-                ? {
-                    marginBottom: "-1px",
-                    borderBottom: "2px solid",
-                    borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)",
-                  }
-                : undefined
-            }
-          >
-            Claim
-          </Button>
-          <Button
-            type="button"
-            variant={activeTab === "balance" ? "primary" : "tertiary"}
-            size="md"
-            onClick={() => setActiveTab("balance")}
-            style={
-              activeTab === "balance"
-                ? {
-                    marginBottom: "-1px",
-                    borderBottom: "2px solid",
-                    borderBottomColor: "var(--sds-clr-primary-9, #7c3aed)",
-                  }
-                : undefined
-            }
-          >
-            Balance
-          </Button>
-        </Box>
-      </div>
+      <Tabs
+        tabs={TABS}
+        activeTab={activeTab}
+        onTabChange={(tabId) => setActiveTab(tabId as TabId)}
+      />
 
       {/* Tab Content */}
       {activeTab === "mint" && (

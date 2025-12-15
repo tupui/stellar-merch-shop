@@ -114,6 +114,7 @@ export const KeyManagementSection = ({
 
       {error && (
         <Box
+          gap="sm"
           style={{
             padding: "12px",
             backgroundColor: "#fee",
@@ -163,7 +164,7 @@ export const KeyManagementSection = ({
         </Button>
 
         {fetchedKey && (
-          <Box style={{ marginTop: "16px" }}>
+          <Box gap="sm" style={{ marginTop: "16px" }}>
             <KeyInfoDisplay
               keyInfo={fetchedKey}
               label="Fetched Key Information"
@@ -208,7 +209,7 @@ export const KeyManagementSection = ({
         </Button>
 
         {generatedKey && (
-          <Box style={{ marginTop: "16px" }}>
+          <Box gap="sm" style={{ marginTop: "16px" }}>
             <KeyInfoDisplay
               keyInfo={generatedKey}
               label="Generated Key Information"
