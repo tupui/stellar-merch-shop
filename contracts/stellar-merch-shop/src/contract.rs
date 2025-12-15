@@ -139,6 +139,8 @@ impl NFCtoNFTContract for StellarMerchShop {
         public_key: BytesN<65>,
         nonce: u32,
     ) {
+        from.require_auth();
+
         verify_chip_signature(e, message, signature, recovery_id, public_key.clone(), nonce);
 
         // Verify the chip public_key corresponds to that specific token_id
@@ -212,8 +214,8 @@ impl NFCtoNFTContract for StellarMerchShop {
 
 }
 
-/// Convert a u64 to its decimal string representation as Bytes
-/// Implementation inspired by OpenZeppelin's audited Strings.toString()
+/// Convert an u64 to its decimal string representation as Bytes
+/// Implementation inspired by OpenZeppelin's Strings.toString()
 fn u64_to_decimal_bytes(e: &Env, mut value: u64) -> Bytes {
     if value == 0 {
         return Bytes::from_slice(e, b"0");

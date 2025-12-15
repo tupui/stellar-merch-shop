@@ -37,20 +37,20 @@ class ConfettiView: UIView {
 
         for (index, color) in colors.enumerated() {
             let cell = CAEmitterCell()
-            cell.birthRate = 2.0 // More particles
+            cell.birthRate = 3.0 // More particles for better visibility
             cell.lifetime = 8.0 // Longer lifetime
-            cell.velocity = 200 + CGFloat(index * 30) // Faster fall
-            cell.velocityRange = 100 // More variation in speed
+            cell.velocity = 150 + CGFloat(index * 20) // Moderate fall speed
+            cell.velocityRange = 50 // Less variation in speed
             cell.emissionLongitude = .pi // Straight down
-            cell.emissionRange = .pi / 2 // Wider spread (90 degrees)
-            cell.spin = 2
-            cell.spinRange = 3
-            cell.scale = 0.08 // Slightly smaller
-            cell.scaleRange = 0.04
-            cell.alphaSpeed = -0.08 // Slower fade
+            cell.emissionRange = .pi / 3 // Narrower spread (60 degrees) for more focused effect
+            cell.spin = 1.5
+            cell.spinRange = 2
+            cell.scale = 0.25 // Much larger for better visibility
+            cell.scaleRange = 0.15 // More consistent size
+            cell.alphaSpeed = -0.06 // Slightly slower fade
 
-            // Create small colored shapes
-            let shapeSize = CGSize(width: 8, height: 8)
+            // Create larger colored shapes for better visibility
+            let shapeSize = CGSize(width: 12, height: 12)
             UIGraphicsBeginImageContextWithOptions(shapeSize, false, 0)
             color.setFill()
             UIBezierPath(ovalIn: CGRect(origin: .zero, size: shapeSize)).fill()
@@ -82,8 +82,184 @@ class ConfettiView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         // Update emitter position and size when view bounds change
-        emitterLayer?.emitterPosition = CGPoint(x: bounds.midX, y: bounds.minY - 10)
-        emitterLayer?.emitterSize = CGSize(width: bounds.width * 1.2, height: 2)
+        emitterLayer?.emitterPosition = CGPoint(x: bounds.midX, y: bounds.minY - 20)
+        emitterLayer?.emitterSize = CGSize(width: bounds.width * 1.5, height: 4)
+    }
+}
+
+/// Modal view controller for displaying signature results with copy functionality
+class SignaturePopupViewController: UIViewController {
+
+    private let globalCounter: String
+    private let keyCounter: String
+    private let derSignature: String
+
+    private let titleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Signature Generated"
+        label.font = .systemFont(ofSize: 20, weight: .semibold)
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private lazy var contentStackView: UIStackView = {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 16
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
+
+    private lazy var copyButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Copy Signature", for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .semibold)
+        button.backgroundColor = .systemBlue
+        button.setTitleColor(.white, for: .normal)
+        button.layer.cornerRadius = 8
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(copySignature), for: .touchUpInside)
+        return button
+    }()
+
+    private lazy var closeButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Close", for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .regular)
+        button.setTitleColor(.systemBlue, for: .normal)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(closePopup), for: .touchUpInside)
+        return button
+    }()
+
+    init(globalCounter: String, keyCounter: String, derSignature: String) {
+        self.globalCounter = globalCounter
+        self.keyCounter = keyCounter
+        self.derSignature = derSignature
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .overFullScreen
+        modalTransitionStyle = .crossDissolve
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupUI()
+    }
+
+    private func setupUI() {
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+
+        // Container view for the popup content
+        let containerView = UIView()
+        containerView.backgroundColor = .systemBackground
+        containerView.layer.cornerRadius = 12
+        containerView.layer.masksToBounds = true
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(containerView)
+
+        // Add title
+        containerView.addSubview(titleLabel)
+
+        // Create content labels
+        let globalCounterLabel = createInfoLabel(title: "Global Counter:", value: globalCounter)
+        let keyCounterLabel = createInfoLabel(title: "Key Counter:", value: keyCounter)
+        let signatureLabel = createInfoLabel(title: "DER Signature:", value: derSignature)
+
+        // Add labels to stack view
+        contentStackView.addArrangedSubview(globalCounterLabel)
+        contentStackView.addArrangedSubview(keyCounterLabel)
+        contentStackView.addArrangedSubview(signatureLabel)
+
+        containerView.addSubview(contentStackView)
+
+        // Button stack
+        let buttonStack = UIStackView()
+        buttonStack.axis = .horizontal
+        buttonStack.spacing = 12
+        buttonStack.distribution = .fillEqually
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+
+        buttonStack.addArrangedSubview(closeButton)
+        buttonStack.addArrangedSubview(copyButton)
+
+        containerView.addSubview(buttonStack)
+
+        // Layout constraints
+        NSLayoutConstraint.activate([
+            containerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            containerView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
+            containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+
+            titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 20),
+            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
+            titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+
+            contentStackView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 20),
+            contentStackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
+            contentStackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+
+            buttonStack.topAnchor.constraint(equalTo: contentStackView.bottomAnchor, constant: 24),
+            buttonStack.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
+            buttonStack.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
+            buttonStack.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -20),
+            buttonStack.heightAnchor.constraint(equalToConstant: 44)
+        ])
+    }
+
+    private func createInfoLabel(title: String, value: String) -> UIView {
+        let container = UIView()
+
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+        titleLabel.textColor = .secondaryLabel
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let valueLabel = UILabel()
+        valueLabel.text = value
+        valueLabel.font = .systemFont(ofSize: 14, weight: .regular)
+        valueLabel.textColor = .label
+        valueLabel.numberOfLines = 0
+        valueLabel.lineBreakMode = .byCharWrapping
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(titleLabel)
+        container.addSubview(valueLabel)
+
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: container.topAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+
+            valueLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            valueLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            valueLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            valueLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+
+        return container
+    }
+
+    @objc private func copySignature() {
+        let signatureText = "Global Counter: \(globalCounter)\nKey Counter: \(keyCounter)\nDER Signature: \(derSignature)"
+        UIPasteboard.general.string = signatureText
+
+        // Show brief feedback
+        let originalTitle = copyButton.title(for: .normal)
+        copyButton.setTitle("Copied!", for: .normal)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.copyButton.setTitle(originalTitle, for: .normal)
+        }
+    }
+
+    @objc private func closePopup() {
+        dismiss(animated: true)
     }
 }
 
@@ -91,12 +267,12 @@ class ConfettiView: UIView {
 class ViewController: UIViewController {
     let TAG: String = "MainViewController"
     
-    var publicKeyLabel: UILabel!
     var scanButton: UIButton!
     var signButton: UIButton!
     var claimButton: UIButton!
     var addressLabel: UILabel!
     var settingsButton: UIButton!
+    var loadingIndicator: UIActivityIndicatorView!
     
     var nfc_helper: NFCHelper?
     var walletService: WalletService!
@@ -147,12 +323,21 @@ class ViewController: UIViewController {
 
         ResetDefaults()
         scanButton.isEnabled = false
-        publicKeyLabel.text = "Scan NFC chip to load NFT"
+        loadingIndicator.startAnimating()
 
         // Start NFC session to read NDEF
         nfc_helper = NFCHelper()
         nfc_helper?.OnNDEFEvent = self.OnNDEFEvent(success:url:error:)
+        nfc_helper?.OnImmediateError = self.OnImmediateError(error:)
         nfc_helper?.BeginSession()
+    }
+
+    /// Handles immediate NFC error feedback
+    func OnImmediateError(error: String) {
+        DispatchQueue.main.async {
+            self.loadingIndicator.stopAnimating()
+            self.scanButton.isEnabled = true
+        }
     }
 
     /// Handles NDEF reading events
@@ -164,35 +349,39 @@ class ViewController: UIViewController {
             if let (contractId, tokenId) = parseNDEFUrl(ndefUrl) {
                 print(TAG + ": Parsed contract ID: \(contractId), token ID: \(tokenId)")
 
-                // Update UI
+                // Show immediate success feedback and close NFC session
                 DispatchQueue.main.async {
-                    self.publicKeyLabel.text = "Loading NFT...\nFetching metadata from blockchain"
+                    self.loadingIndicator.stopAnimating()
+                    self.enableAllButtons()
+
+                    // Close NFC session immediately - we have the data we need
+                    self.nfc_helper?.EndSession()
+                    self.nfc_helper = nil
                 }
 
-                // Load the NFT
+                // Load the NFT in background (ownership check and metadata download can fail)
                 Task {
                     do {
-                        try await self.loadNFT(contractId: contractId, tokenId: tokenId)
+                        try await self.loadUnclaimedNFT(contractId: contractId, tokenId: tokenId)
+                    } catch let nftError as NFTError {
+                        // Error will be handled in the NFT view if needed
                     } catch {
-                        DispatchQueue.main.async {
-                            self.publicKeyLabel.text = "✗ Failed to load NFT: \(error.localizedDescription)"
-                            self.publicKeyLabel.textColor = .systemRed
-                            self.scanButton.isEnabled = true
-                        }
+                        // Error will be handled in the NFT view if needed
                     }
                 }
             } else {
                 DispatchQueue.main.async {
-                    self.publicKeyLabel.text = "✗ Failed to parse NDEF URL"
-                    self.publicKeyLabel.textColor = .systemRed
-                    self.scanButton.isEnabled = true
+                    self.loadingIndicator.stopAnimating()
+                    self.enableAllButtons()
+                    self.nfc_helper?.EndSession()
+                    self.nfc_helper = nil
                 }
             }
         } else {
+            // Show error immediately when NFC reading fails
             DispatchQueue.main.async {
-                self.publicKeyLabel.text = "✗ Failed to read NDEF: \(error ?? "Unknown error")"
-                self.publicKeyLabel.textColor = .systemRed
-                self.scanButton.isEnabled = true
+                self.loadingIndicator.stopAnimating()
+                self.enableAllButtons()
             }
         }
     }
@@ -273,7 +462,6 @@ class ViewController: UIViewController {
         }
         
         ResetDefaults()
-        publicKeyLabel.text = "Preparing claim...\nHold chip near device"
         claimButton.isEnabled = false
         
         BeginNFCClaimSession()
@@ -351,15 +539,13 @@ class ViewController: UIViewController {
         view.addSubview(claimBtn)
         claimButton = claimBtn
         
-        // Create label for public key/signature
-        let label = UILabel()
-        label.text = ""
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.font = .systemFont(ofSize: 14, weight: .regular)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
-        publicKeyLabel = label
+        // Create loading indicator
+        let loading = UIActivityIndicatorView(style: .medium)
+        loading.translatesAutoresizingMaskIntoConstraints = false
+        loading.hidesWhenStopped = true
+        loading.color = .systemBlue
+        view.addSubview(loading)
+        loadingIndicator = loading
 
         // Create confetti view for success celebrations
         let confetti = ConfettiView(frame: view.bounds)
@@ -395,9 +581,8 @@ class ViewController: UIViewController {
             confetti.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             confetti.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
-            label.topAnchor.constraint(equalTo: claimBtn.bottomAnchor, constant: 40),
-            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20)
+            loading.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            loading.topAnchor.constraint(equalTo: claimBtn.bottomAnchor, constant: 20)
         ])
     }
     
@@ -430,10 +615,16 @@ class ViewController: UIViewController {
     
     /// Resets the user interface elements to the initial state
     func ResetDefaults() {
-        self.publicKeyLabel.text = ""
-        self.publicKeyLabel.textColor = .label // Reset to default color
+        self.loadingIndicator.stopAnimating()
         self.confettiView?.stopConfetti()
         self.confettiView?.isHidden = true
+    }
+
+    /// Enables all buttons in the UI
+    func enableAllButtons() {
+        self.scanButton.isEnabled = true
+        self.signButton.isEnabled = true
+        self.claimButton.isEnabled = true
     }
     
     // MARK: - Private helpers: NFC
@@ -468,9 +659,7 @@ class ViewController: UIViewController {
                             session: session,
                             keyIndex: selected_keyindex
                         ) { progress in
-                            DispatchQueue.main.async {
-                                self.publicKeyLabel.text = progress
-                            }
+                            // Progress updates removed - no status text displayed
                         }
 
                         await MainActor.run {
@@ -478,10 +667,7 @@ class ViewController: UIViewController {
                             self.confettiView?.isHidden = false
                             self.confettiView?.startConfetti()
 
-                            // Minimalistic success message following Apple guidelines
-                            self.publicKeyLabel.text = "✓ NFT Claimed Successfully\nLoading NFT..."
-                            self.publicKeyLabel.textColor = .systemGreen
-                            self.claimButton.isEnabled = true
+                            self.enableAllButtons()
 
                             session.alertMessage = "Claim successful"
                             session.invalidate()
@@ -489,10 +675,6 @@ class ViewController: UIViewController {
 
                         // After confetti animation, load the NFT
                         try await Task.sleep(nanoseconds: 3_000_000_000) // Wait for confetti animation (3 seconds)
-
-                        await MainActor.run {
-                            self.publicKeyLabel.text = "Loading NFT..."
-                        }
 
                         // Load the NFT using the token ID from the claim result
                         try await self.loadNFT(contractId: AppConfig.shared.contractId, tokenId: claimResult.tokenId)
@@ -503,9 +685,7 @@ class ViewController: UIViewController {
                                 ? "This NFT has already been claimed"
                                 : "Claim failed. Please try again."
 
-                            self.publicKeyLabel.text = "✗ \(errorMessage)"
-                            self.publicKeyLabel.textColor = .systemRed
-                            self.claimButton.isEnabled = true
+                            self.enableAllButtons()
 
                             session.invalidate(errorMessage: "Claim failed")
                         }
@@ -514,7 +694,6 @@ class ViewController: UIViewController {
             }
         } else {
             DispatchQueue.main.async {
-                self.publicKeyLabel.text = "Failed to detect tag: \(error ?? "Unknown error")"
                 self.claimButton.isEnabled = true
             }
         }
@@ -565,10 +744,7 @@ class ViewController: UIViewController {
             if(error != nil) {
                 error_message += error!
             }
-            DispatchQueue.main.async {
-                self.publicKeyLabel.text = "✗ \(error_message)"
-                self.publicKeyLabel.textColor = .systemRed
-            }
+            // Error handled silently - no status text displayed
         }
     }
     
@@ -585,9 +761,6 @@ class ViewController: UIViewController {
             let testHashHex = "53d79d1d1cdcb175a480d34dddf359d3bf9f441d35d5e86b8a3ea78afba9491b"
             guard let messageDigest = Data(hexString: testHashHex) else {
                 print(TAG + ": Error: Failed to parse test hash")
-                DispatchQueue.main.async {
-                    self.publicKeyLabel.text = "Error: Invalid test hash"
-                }
                 session.invalidate(errorMessage: "Invalid test hash")
                 return
             }
@@ -624,10 +797,7 @@ class ViewController: UIViewController {
                 let publicKeyHex = publicKeyData.map { String(format: "%02x", $0) }.joined()
                 
                 result = true
-                // Display the result
-                DispatchQueue.main.async {
-                    self.publicKeyLabel.text = "Public Key (64 bytes):\n\(publicKeyHex)"
-                }
+                // Public key read successfully - no display needed
                 print(TAG + ": Success: Public key displayed")
             } else {
                 error_msg = "Invalid response length"
@@ -643,8 +813,7 @@ class ViewController: UIViewController {
         } else {
 
             DispatchQueue.main.async {
-                self.publicKeyLabel.text = "✗ Failed to read tag\n\(error_msg)"
-                self.publicKeyLabel.textColor = .systemRed
+                self.enableAllButtons()
             }
              session.invalidate(errorMessage: "Failed to read tag. \(error_msg)")
         }
@@ -685,9 +854,14 @@ class ViewController: UIViewController {
                 print(TAG + ": ================================================")
                 
                 result = true
-                // Display the result
+                // Show signature popup
                 DispatchQueue.main.async {
-                    self.publicKeyLabel.text = "Signature Generated:\n\nGlobal Counter: \(globalCounterHex)\nKey Counter: \(keyCounterHex)\nDER Signature: \(derSignatureHex)"
+                    let popup = SignaturePopupViewController(
+                        globalCounter: globalCounterHex,
+                        keyCounter: keyCounterHex,
+                        derSignature: derSignatureHex
+                    )
+                    self.present(popup, animated: true)
                 }
                 print(TAG + ": Success: Signature displayed")
             } else {
@@ -703,14 +877,76 @@ class ViewController: UIViewController {
             session.invalidate()
         } else {
             DispatchQueue.main.async {
-                self.publicKeyLabel.text = "✗ Failed to generate signature\n\(error_msg)"
-                self.publicKeyLabel.textColor = .systemRed
+                self.enableAllButtons()
             }
             session.invalidate(errorMessage: "Failed to generate signature. \(error_msg)")
         }
     }
 
     // MARK: - NFT Loading
+    private func loadUnclaimedNFT(contractId: String, tokenId: UInt64) async throws {
+        do {
+            // Check wallet exists for contract calls
+            guard walletService.getStoredWallet() != nil else {
+                throw NFTError.noWallet
+            }
+
+            // Get private key from secure storage
+            let secureStorage = SecureKeyStorage()
+            guard let privateKey = try secureStorage.loadPrivateKey() else {
+                throw NFTError.noWallet
+            }
+            let keyPair = try KeyPair(secretSeed: privateKey)
+
+            // Status updates removed - no status text displayed
+
+            // First check if the token exists by getting its URI
+            let ipfsUrl = try await blockchainService.getTokenUri(
+                contractId: contractId,
+                tokenId: tokenId,
+                sourceKeyPair: keyPair
+            )
+
+            // Status updates removed - no status text displayed
+
+            // Convert IPFS URL to HTTP gateway URL
+            let httpMetadataUrl = ipfsService.convertToHTTPGateway(ipfsUrl)
+
+            // Download NFT metadata from IPFS
+            let metadata = try await ipfsService.downloadNFTMetadata(from: httpMetadataUrl)
+
+            // Download image if available
+            var imageData: Data? = nil
+            if let imageUrl = metadata.image {
+                let httpImageUrl = ipfsService.convertToHTTPGateway(imageUrl)
+                imageData = try await ipfsService.downloadImageData(from: httpImageUrl)
+            }
+
+            // Show NFT view with unclaimed status
+            await MainActor.run {
+                let nftView = NFTView()
+                nftView.displayNFT(metadata: metadata, imageData: imageData, ownerAddress: nil, isClaimed: false)
+                let navController = UINavigationController(rootViewController: nftView)
+                present(navController, animated: true)
+
+                // Don't update UI if NFT view is already presented
+                if self.presentedViewController == nil {
+                    self.loadingIndicator.stopAnimating()
+                    enableAllButtons()
+                }
+            }
+
+        } catch {
+            await MainActor.run {
+                // Don't update UI if NFT view is already presented (means NDEF reading succeeded)
+                if self.presentedViewController == nil {
+                    self.loadingIndicator.stopAnimating()
+                    enableAllButtons()
+                }
+            }
+        }
+    }
+
     private func loadNFT(contractId: String, tokenId: UInt64) async throws {
         do {
             // Check wallet exists for contract calls
@@ -725,22 +961,9 @@ class ViewController: UIViewController {
             }
             let keyPair = try KeyPair(secretSeed: privateKey)
 
-            await MainActor.run {
-                publicKeyLabel.text = "Loading NFT...\nChecking ownership"
-            }
+            // Status updates removed - no status text displayed
 
-            // First check if the token exists by getting its owner
-            let ownerAddress = try await blockchainService.getTokenOwner(
-                contractId: contractId,
-                tokenId: tokenId,
-                sourceKeyPair: keyPair
-            )
-
-            await MainActor.run {
-                publicKeyLabel.text = "Loading NFT...\nFetching metadata from blockchain"
-            }
-
-            // Get token URI
+            // First check if the token exists by getting its URI
             let ipfsUrl = try await blockchainService.getTokenUri(
                 contractId: contractId,
                 tokenId: tokenId,
@@ -748,8 +971,21 @@ class ViewController: UIViewController {
             )
 
             await MainActor.run {
-                publicKeyLabel.text = "Loading NFT...\nDownloading metadata from IPFS"
+                // Status updates removed - no status text displayed
             }
+
+            // Now check if the token has an owner
+            let ownerAddress = try await blockchainService.getTokenOwner(
+                contractId: contractId,
+                tokenId: tokenId,
+                sourceKeyPair: keyPair
+            )
+
+            await MainActor.run {
+                // Status updates removed - no status text displayed
+            }
+
+            // Status updates removed - no status text displayed
 
             // Convert IPFS URL to HTTP gateway URL
             let httpMetadataUrl = ipfsService.convertToHTTPGateway(ipfsUrl)
@@ -767,21 +1003,24 @@ class ViewController: UIViewController {
             // Show NFT view with owner information
             await MainActor.run {
                 let nftView = NFTView()
-                nftView.displayNFT(metadata: metadata, imageData: imageData, ownerAddress: ownerAddress)
+                nftView.displayNFT(metadata: metadata, imageData: imageData, ownerAddress: ownerAddress, isClaimed: true)
                 let navController = UINavigationController(rootViewController: nftView)
                 present(navController, animated: true)
 
-                publicKeyLabel.text = "✓ NFT Loaded Successfully"
-                publicKeyLabel.textColor = .systemGreen
-                scanButton.isEnabled = true
+                // Don't update UI if NFT view is already presented
+                if self.presentedViewController == nil {
+                    self.loadingIndicator.stopAnimating()
+                    enableAllButtons()
+                }
             }
 
         } catch {
             await MainActor.run {
-                let errorMessage = (error as? NFTError)?.errorDescription ?? error.localizedDescription
-                publicKeyLabel.text = "✗ Failed to load NFT: \(errorMessage)"
-                publicKeyLabel.textColor = .systemRed
-                scanButton.isEnabled = true
+                // Don't update UI if NFT view is already presented (means NDEF reading succeeded)
+                if self.presentedViewController == nil {
+                    self.loadingIndicator.stopAnimating()
+                    enableAllButtons()
+                }
             }
         }
     }

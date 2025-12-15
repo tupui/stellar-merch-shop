@@ -53,6 +53,6 @@ contract_deploy:  ## Deploy Soroban contract to testnet
   		-- \
   		--admin me \
   		--name shirt --symbol cmp1 --max_tokens 100 \
-  		--uri ipfs://QmWXJXRdExse2YHRY21Wvh4pjRxNRQcWVhcKw4DLVnqGq \
+  		--uri ipfs://QmWXJXRdExse2YHRY21Wvh4pjRxNRQcWVhcKw4DLVnqGqs \
   		> .config/stellar/stellar_merch_shop_$(network)_id && \
   	cat .config/stellar/stellar_merch_shop_$(network)_id

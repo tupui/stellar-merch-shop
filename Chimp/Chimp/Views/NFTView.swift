@@ -139,7 +139,8 @@ class NFTView: UIViewController {
     ///   - metadata: NFT metadata
     ///   - imageData: NFT image data
     ///   - ownerAddress: Owner address (optional)
-    func displayNFT(metadata: NFTMetadata, imageData: Data?, ownerAddress: String? = nil) {
+    ///   - isClaimed: Whether the token has been claimed
+    func displayNFT(metadata: NFTMetadata, imageData: Data?, ownerAddress: String? = nil, isClaimed: Bool = true) {
         self.metadata = metadata
         self.imageData = imageData
 
@@ -161,11 +162,20 @@ class NFTView: UIViewController {
             self.descriptionLabel.text = metadata.description ?? "No description available"
 
             // Set owner address
-            if let ownerAddress = ownerAddress {
-                self.ownerLabel.text = "Owner: \(ownerAddress)"
-                self.ownerLabel.isHidden = false
+            if isClaimed {
+                if let ownerAddress = ownerAddress {
+                    self.ownerLabel.text = "Owner: \(ownerAddress)"
+                    self.ownerLabel.textColor = .systemBlue
+                    self.ownerLabel.isHidden = false
+                } else {
+                    self.ownerLabel.text = "Owner: Unknown"
+                    self.ownerLabel.textColor = .systemGray
+                    self.ownerLabel.isHidden = false
+                }
             } else {
-                self.ownerLabel.isHidden = true
+                self.ownerLabel.text = "This token exists but has not been claimed yet. Use the 'Claim NFT' feature to claim ownership."
+                self.ownerLabel.textColor = .systemOrange
+                self.ownerLabel.isHidden = false
             }
 
             // Clear existing attributes

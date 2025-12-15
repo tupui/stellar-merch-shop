@@ -17,8 +17,6 @@ pub enum NonFungibleTokenError {
     InvalidAmount = 207,
     /// Indicates the token was already minted.
     TokenAlreadyMinted = 210,
-    /// Indicates the length of the base URI exceeds the maximum allowed.
-    BaseUriMaxLenExceeded = 211,
     /// Indicates the royalty amount is higher than 10_000 (100%) basis points.
     InvalidRoyaltyAmount = 212,
     /// Indicates an invalid signature

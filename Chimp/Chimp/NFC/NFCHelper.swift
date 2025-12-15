@@ -39,6 +39,9 @@ class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
 
     /// Event handler for NDEF reading operations
     var OnNDEFEvent: ((Bool, String?, String?) -> ())?
+
+    /// Event handler for immediate error feedback during NFC operations
+    var OnImmediateError: ((String) -> ())?
     
     /// Timeout timer for 60-second session limit
     private var timeoutTimer: Timer?
@@ -86,6 +89,7 @@ class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
                 // Session terminated unexpectedly
                 print(TAG + ": ReaderSession: Session terminated unexpectedly")
                 DispatchQueue.main.async {
+                    self.OnImmediateError?("NFC session ended unexpectedly. Please try again.")
                     OnTagEvent(false, nil, nil, "NFC session ended unexpectedly. Please try again.")
                 }
                 
@@ -93,6 +97,7 @@ class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
                 // System is busy
                 print(TAG + ": ReaderSession: System is busy")
                 DispatchQueue.main.async {
+                    self.OnImmediateError?("NFC system is busy. Please try again.")
                     OnTagEvent(false, nil, nil, "NFC system is busy. Please try again.")
                 }
                 
@@ -100,6 +105,7 @@ class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
                 // Session timeout (60 seconds)
                 print(TAG + ": ReaderSession: Session timeout")
                 DispatchQueue.main.async {
+                    self.OnImmediateError?("NFC session timed out. Please try again.")
                     OnTagEvent(false, nil, nil, "NFC session timed out. Please try again.")
                 }
                 
@@ -130,6 +136,7 @@ class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
             print(TAG + ": ReaderSession: Multiple tags found")
             session.alertMessage = "Multiple tags found. Please use only one tag."
             DispatchQueue.main.async {
+                self.OnImmediateError?("Multiple tags found. Please use only one tag.")
                 if let OnTagEvent = self.OnTagEvent {
                     OnTagEvent(false, nil, nil, "Multiple tags found. Please use only one tag.")
                 }
@@ -144,6 +151,7 @@ class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
         guard let firstTag = tags.first else {
             print(TAG + ": ReaderSession: No tags in array")
             DispatchQueue.main.async {
+                self.OnImmediateError?("No tag detected")
                 if let OnTagEvent = self.OnTagEvent {
                     OnTagEvent(false, nil, nil, "No tag detected")
                 }
@@ -190,6 +198,10 @@ class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
                         DispatchQueue.main.async {
                             OnTagEvent(true, tag, session, nil)
                         }
+                        // For NDEF reading, we can close the session immediately since we have the data
+                        if self.OnNDEFEvent != nil {
+                            session.invalidate()
+                        }
                     }
                 }
             }
@@ -197,6 +209,7 @@ class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
             print(TAG + ": ReaderSession: Tag is not ISO7816 compatible")
             session.alertMessage = "Tag is not compatible"
             DispatchQueue.main.async {
+                self.OnImmediateError?("Tag is not compatible")
                 if let OnTagEvent = self.OnTagEvent {
                     OnTagEvent(false, nil, nil, "Tag is not ISO7816 compatible")
                 }
