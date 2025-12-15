@@ -34,7 +34,7 @@ if (typeof window !== 'undefined') {
 export const networks = {
   standalone: {
     networkPassphrase: "Standalone Network ; February 2017",
-    contractId: "CC676WJJBX5DR45CKRB5QZN6EH7JD77NZUCONUBRLNIJDDFK7AJBRFMO",
+    contractId: "CCOJXIJ2J3P5VENFSFSKJJGGWOCNBJUHILFPFPC3KOCN6MJYZDBL6XTY",
   }
 } as const
 
@@ -75,7 +75,11 @@ export const NonFungibleTokenError = {
   /**
    * Indicates an invalid signature
    */
-  214: {message:"InvalidSignature"}
+  214: {message:"InvalidSignature"},
+  /**
+   * Indicates the token exists but has not been claimed yet
+   */
+  215: {message:"TokenNotClaimed"}
 }
 
 
@@ -103,46 +107,6 @@ export interface Client {
      */
     simulate?: boolean;
   }) => Promise<AssembledTransaction<u64>>
-
-  /**
-   * Construct and simulate a balance transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  balance: ({owner}: {owner: string}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<u32>>
-
-  /**
-   * Construct and simulate a owner_of transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   */
-  owner_of: ({token_id}: {token_id: u64}, options?: {
-    /**
-     * The fee to pay for the transaction. Default: BASE_FEE
-     */
-    fee?: number;
-
-    /**
-     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
-     */
-    timeoutInSeconds?: number;
-
-    /**
-     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
-     */
-    simulate?: boolean;
-  }) => Promise<AssembledTransaction<string>>
 
   /**
    * Construct and simulate a claim transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -205,6 +169,46 @@ export interface Client {
   }) => Promise<AssembledTransaction<u32>>
 
   /**
+   * Construct and simulate a balance transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  balance: ({owner}: {owner: string}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<u32>>
+
+  /**
+   * Construct and simulate a owner_of transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  owner_of: ({token_id}: {token_id: u64}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<string>>
+
+  /**
    * Construct and simulate a name transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    */
   name: (options?: {
@@ -264,6 +268,46 @@ export interface Client {
     simulate?: boolean;
   }) => Promise<AssembledTransaction<string>>
 
+  /**
+   * Construct and simulate a token_id transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  token_id: ({public_key}: {public_key: Buffer}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<u64>>
+
+  /**
+   * Construct and simulate a public_key transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
+   */
+  public_key: ({token_id}: {token_id: u64}, options?: {
+    /**
+     * The fee to pay for the transaction. Default: BASE_FEE
+     */
+    fee?: number;
+
+    /**
+     * The maximum amount of time to wait for the transaction to complete. Default: DEFAULT_TIMEOUT
+     */
+    timeoutInSeconds?: number;
+
+    /**
+     * Whether to automatically simulate the transaction when constructing the AssembledTransaction. Default: true
+     */
+    simulate?: boolean;
+  }) => Promise<AssembledTransaction<Buffer>>
+
 }
 export class Client extends ContractClient {
   static async deploy<T = Client>(
@@ -288,15 +332,17 @@ export class Client extends ContractClient {
         "AAAAAgAAAAAAAAAAAAAADU5GVFN0b3JhZ2VLZXkAAAAAAAAIAAAAAQAAAAAAAAAUQ2hpcE5vbmNlQnlQdWJsaWNLZXkAAAABAAAD7gAAAEEAAAABAAAAAAAAAAVPd25lcgAAAAAAAAEAAAAGAAAAAQAAAAAAAAAJUHVibGljS2V5AAAAAAAAAQAAAAYAAAABAAAAAAAAABJUb2tlbklkQnlQdWJsaWNLZXkAAAAAAAEAAAPuAAAAQQAAAAEAAAAAAAAAB0JhbGFuY2UAAAAAAQAAABMAAAAAAAAAAAAAAAROYW1lAAAAAAAAAAAAAAAGU3ltYm9sAAAAAAAAAAAAAAAAAANVUkkA",
         "AAAAAAAAAAAAAAANX19jb25zdHJ1Y3RvcgAAAAAAAAUAAAAAAAAABWFkbWluAAAAAAAAEwAAAAAAAAAEbmFtZQAAABAAAAAAAAAABnN5bWJvbAAAAAAAEAAAAAAAAAADdXJpAAAAABAAAAAAAAAACm1heF90b2tlbnMAAAAAAAYAAAAA",
         "AAAAAAAAAAAAAAAEbWludAAAAAUAAAAAAAAAB21lc3NhZ2UAAAAADgAAAAAAAAAJc2lnbmF0dXJlAAAAAAAD7gAAAEAAAAAAAAAAC3JlY292ZXJ5X2lkAAAAAAQAAAAAAAAACnB1YmxpY19rZXkAAAAAA+4AAABBAAAAAAAAAAVub25jZQAAAAAAAAQAAAABAAAABg==",
-        "AAAAAAAAAAAAAAAHYmFsYW5jZQAAAAABAAAAAAAAAAVvd25lcgAAAAAAABMAAAABAAAABA==",
-        "AAAAAAAAAAAAAAAIb3duZXJfb2YAAAABAAAAAAAAAAh0b2tlbl9pZAAAAAYAAAABAAAAEw==",
         "AAAAAAAAAAAAAAAFY2xhaW0AAAAAAAAGAAAAAAAAAAhjbGFpbWFudAAAABMAAAAAAAAAB21lc3NhZ2UAAAAADgAAAAAAAAAJc2lnbmF0dXJlAAAAAAAD7gAAAEAAAAAAAAAAC3JlY292ZXJ5X2lkAAAAAAQAAAAAAAAACnB1YmxpY19rZXkAAAAAA+4AAABBAAAAAAAAAAVub25jZQAAAAAAAAQAAAABAAAABg==",
         "AAAAAAAAAAAAAAAIdHJhbnNmZXIAAAAIAAAAAAAAAARmcm9tAAAAEwAAAAAAAAACdG8AAAAAABMAAAAAAAAACHRva2VuX2lkAAAABgAAAAAAAAAHbWVzc2FnZQAAAAAOAAAAAAAAAAlzaWduYXR1cmUAAAAAAAPuAAAAQAAAAAAAAAALcmVjb3ZlcnlfaWQAAAAABAAAAAAAAAAKcHVibGljX2tleQAAAAAD7gAAAEEAAAAAAAAABW5vbmNlAAAAAAAABAAAAAA=",
         "AAAAAAAAAAAAAAAJZ2V0X25vbmNlAAAAAAAAAQAAAAAAAAAKcHVibGljX2tleQAAAAAD7gAAAEEAAAABAAAABA==",
+        "AAAAAAAAAAAAAAAHYmFsYW5jZQAAAAABAAAAAAAAAAVvd25lcgAAAAAAABMAAAABAAAABA==",
+        "AAAAAAAAAAAAAAAIb3duZXJfb2YAAAABAAAAAAAAAAh0b2tlbl9pZAAAAAYAAAABAAAAEw==",
         "AAAAAAAAAAAAAAAEbmFtZQAAAAAAAAABAAAAEA==",
         "AAAAAAAAAAAAAAAGc3ltYm9sAAAAAAAAAAAAAQAAABA=",
         "AAAAAAAAAAAAAAAJdG9rZW5fdXJpAAAAAAAAAQAAAAAAAAAIdG9rZW5faWQAAAAGAAAAAQAAABA=",
-        "AAAABAAAAAAAAAAAAAAAFU5vbkZ1bmdpYmxlVG9rZW5FcnJvcgAAAAAAAAgAAAAkSW5kaWNhdGVzIGEgbm9uLWV4aXN0ZW50IGB0b2tlbl9pZGAuAAAAEE5vbkV4aXN0ZW50VG9rZW4AAADIAAAAV0luZGljYXRlcyBhbiBlcnJvciByZWxhdGVkIHRvIHRoZSBvd25lcnNoaXAgb3ZlciBhIHBhcnRpY3VsYXIgdG9rZW4uClVzZWQgaW4gdHJhbnNmZXJzLgAAAAAOSW5jb3JyZWN0T3duZXIAAAAAAMkAAAApSW5kaWNhdGVzIG92ZXJmbG93IHdoZW4gYWRkaW5nIHR3byB2YWx1ZXMAAAAAAAAMTWF0aE92ZXJmbG93AAAAzQAAADZJbmRpY2F0ZXMgYWxsIHBvc3NpYmxlIGB0b2tlbl9pZGBzIGFyZSBhbHJlYWR5IGluIHVzZS4AAAAAABNUb2tlbklEc0FyZURlcGxldGVkAAAAAM4AAABFSW5kaWNhdGVzIGFuIGludmFsaWQgYW1vdW50IHRvIGJhdGNoIG1pbnQgaW4gYGNvbnNlY3V0aXZlYCBleHRlbnNpb24uAAAAAAAADUludmFsaWRBbW91bnQAAAAAAADPAAAAJ0luZGljYXRlcyB0aGUgdG9rZW4gd2FzIGFscmVhZHkgbWludGVkLgAAAAASVG9rZW5BbHJlYWR5TWludGVkAAAAAADSAAAAR0luZGljYXRlcyB0aGUgcm95YWx0eSBhbW91bnQgaXMgaGlnaGVyIHRoYW4gMTBfMDAwICgxMDAlKSBiYXNpcyBwb2ludHMuAAAAABRJbnZhbGlkUm95YWx0eUFtb3VudAAAANQAAAAeSW5kaWNhdGVzIGFuIGludmFsaWQgc2lnbmF0dXJlAAAAAAAQSW52YWxpZFNpZ25hdHVyZQAAANY=",
+        "AAAAAAAAAAAAAAAIdG9rZW5faWQAAAABAAAAAAAAAApwdWJsaWNfa2V5AAAAAAPuAAAAQQAAAAEAAAAG",
+        "AAAAAAAAAAAAAAAKcHVibGljX2tleQAAAAAAAQAAAAAAAAAIdG9rZW5faWQAAAAGAAAAAQAAA+4AAABB",
+        "AAAABAAAAAAAAAAAAAAAFU5vbkZ1bmdpYmxlVG9rZW5FcnJvcgAAAAAAAAkAAAAkSW5kaWNhdGVzIGEgbm9uLWV4aXN0ZW50IGB0b2tlbl9pZGAuAAAAEE5vbkV4aXN0ZW50VG9rZW4AAADIAAAAV0luZGljYXRlcyBhbiBlcnJvciByZWxhdGVkIHRvIHRoZSBvd25lcnNoaXAgb3ZlciBhIHBhcnRpY3VsYXIgdG9rZW4uClVzZWQgaW4gdHJhbnNmZXJzLgAAAAAOSW5jb3JyZWN0T3duZXIAAAAAAMkAAAApSW5kaWNhdGVzIG92ZXJmbG93IHdoZW4gYWRkaW5nIHR3byB2YWx1ZXMAAAAAAAAMTWF0aE92ZXJmbG93AAAAzQAAADZJbmRpY2F0ZXMgYWxsIHBvc3NpYmxlIGB0b2tlbl9pZGBzIGFyZSBhbHJlYWR5IGluIHVzZS4AAAAAABNUb2tlbklEc0FyZURlcGxldGVkAAAAAM4AAABFSW5kaWNhdGVzIGFuIGludmFsaWQgYW1vdW50IHRvIGJhdGNoIG1pbnQgaW4gYGNvbnNlY3V0aXZlYCBleHRlbnNpb24uAAAAAAAADUludmFsaWRBbW91bnQAAAAAAADPAAAAJ0luZGljYXRlcyB0aGUgdG9rZW4gd2FzIGFscmVhZHkgbWludGVkLgAAAAASVG9rZW5BbHJlYWR5TWludGVkAAAAAADSAAAAR0luZGljYXRlcyB0aGUgcm95YWx0eSBhbW91bnQgaXMgaGlnaGVyIHRoYW4gMTBfMDAwICgxMDAlKSBiYXNpcyBwb2ludHMuAAAAABRJbnZhbGlkUm95YWx0eUFtb3VudAAAANQAAAAeSW5kaWNhdGVzIGFuIGludmFsaWQgc2lnbmF0dXJlAAAAAAAQSW52YWxpZFNpZ25hdHVyZQAAANYAAAA3SW5kaWNhdGVzIHRoZSB0b2tlbiBleGlzdHMgYnV0IGhhcyBub3QgYmVlbiBjbGFpbWVkIHlldAAAAAAPVG9rZW5Ob3RDbGFpbWVkAAAAANc=",
         "AAAABQAAAAAAAAAAAAAACFRyYW5zZmVyAAAAAQAAAAh0cmFuc2ZlcgAAAAMAAAAAAAAABGZyb20AAAATAAAAAQAAAAAAAAACdG8AAAAAABMAAAABAAAAAAAAAAh0b2tlbl9pZAAAAAYAAAAAAAAAAg==",
         "AAAABQAAAAAAAAAAAAAAB0FwcHJvdmUAAAAAAQAAAAdhcHByb3ZlAAAAAAQAAAAAAAAACGFwcHJvdmVyAAAAEwAAAAEAAAAAAAAACHRva2VuX2lkAAAABgAAAAEAAAAAAAAACGFwcHJvdmVkAAAAEwAAAAAAAAAAAAAAEWxpdmVfdW50aWxfbGVkZ2VyAAAAAAAABAAAAAAAAAAC",
         "AAAABQAAAAAAAAAAAAAADUFwcHJvdmVGb3JBbGwAAAAAAAABAAAAD2FwcHJvdmVfZm9yX2FsbAAAAAADAAAAAAAAAAVvd25lcgAAAAAAABMAAAABAAAAAAAAAAhvcGVyYXRvcgAAABMAAAAAAAAAAAAAABFsaXZlX3VudGlsX2xlZGdlcgAAAAAAAAQAAAAAAAAAAg==",
@@ -307,13 +353,15 @@ export class Client extends ContractClient {
   }
   public readonly fromJSON = {
     mint: this.txFromJSON<u64>,
-        balance: this.txFromJSON<u32>,
-        owner_of: this.txFromJSON<string>,
         claim: this.txFromJSON<u64>,
         transfer: this.txFromJSON<null>,
         get_nonce: this.txFromJSON<u32>,
+        balance: this.txFromJSON<u32>,
+        owner_of: this.txFromJSON<string>,
         name: this.txFromJSON<string>,
         symbol: this.txFromJSON<string>,
-        token_uri: this.txFromJSON<string>
+        token_uri: this.txFromJSON<string>,
+        token_id: this.txFromJSON<u64>,
+        public_key: this.txFromJSON<Buffer>
   }
 }

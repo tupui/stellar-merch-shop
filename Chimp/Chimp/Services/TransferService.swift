@@ -39,11 +39,14 @@ class TransferService {
             throw AppError.wallet(.noWallet)
         }
 
-        let contractId = config.contractId
-        guard !contractId.isEmpty else {
-            print("TransferService: ERROR: Contract ID is empty")
-            throw AppError.validation("Contract ID not configured. Please set the contract ID in settings.")
+        // Step 1: Read contract ID from chip's NDEF
+        progressCallback?("Reading chip data...")
+        let ndefUrl = try await readNDEFUrl(tag: tag, session: session)
+        guard let ndefUrl = ndefUrl, let contractId = parseContractIdFromNDEFUrl(ndefUrl) else {
+            throw AppError.validation("Invalid contract ID in NFC chip")
         }
+
+        print("TransferService: Contract ID from chip: \(contractId)")
 
         // Validate contract ID format
         guard config.validateContractId(contractId) else {
@@ -81,9 +84,30 @@ class TransferService {
             throw AppError.wallet(.noWallet)
         }
         let sourceKeyPair = try KeyPair(secretSeed: privateKey)
-        print("TransferService: Source account: \(sourceKeyPair.accountId)")
 
-        // Step 3: Get nonce from contract
+        // Step 3: Validate that the chip's public key corresponds to the token ID
+        progressCallback?("Validating chip ownership...")
+        print("TransferService: Validating that chip corresponds to token ID \(tokenId)")
+        do {
+            let expectedTokenId = try await blockchainService.getTokenId(
+                contractId: config.contractId,
+                publicKey: publicKeyData,
+                sourceKeyPair: sourceKeyPair
+            )
+            guard expectedTokenId == tokenId else {
+                throw AppError.validation("This NFC chip does not correspond to token ID \(tokenId). Expected token ID: \(expectedTokenId)")
+            }
+            print("TransferService: Chip validation successful - corresponds to token ID \(tokenId)")
+        } catch let error as AppError {
+            if case .blockchain(.contract(.nonExistentToken)) = error {
+                throw AppError.validation("This NFC chip is not registered with the contract")
+            } else {
+                // Re-throw other errors
+                throw error
+            }
+        }
+
+        // Step 4: Get nonce from contract
         progressCallback?("Getting nonce from contract...")
         print("TransferService: Getting nonce for contract: \(config.contractId)")
         let currentNonce: UInt32
@@ -229,6 +253,213 @@ class TransferService {
         }
 
         return TransferResult(transactionHash: txHash)
+    }
+
+    /// Parse contract ID from NDEF URL (extracts the contract ID part)
+    private func parseContractIdFromNDEFUrl(_ url: String) -> String? {
+        // Remove protocol if present
+        var urlPath = url
+        if urlPath.hasPrefix("http://") {
+            urlPath = String(urlPath.dropFirst(7))
+        } else if urlPath.hasPrefix("https://") {
+            urlPath = String(urlPath.dropFirst(8))
+        }
+
+        // Split by '/' and expect contract ID as second component
+        let components = urlPath.split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count >= 2 else {
+            return nil
+        }
+
+        let contractId = String(components[1])
+
+        // Validate contract ID format
+        guard contractId.count == 56 && contractId.hasPrefix("C") else {
+            return nil
+        }
+
+        return contractId
+    }
+
+    // MARK: - NDEF Operations
+
+    /// NDEF Application ID
+    private let NDEF_AID: [UInt8] = [0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01]
+
+    /// NDEF File ID
+    private let NDEF_FILE_ID: [UInt8] = [0xE1, 0x04]
+
+    /// Read NDEF URL from chip using APDU commands
+    private func readNDEFUrl(tag: NFCISO7816Tag, session: NFCTagReaderSession) async throws -> String? {
+        print("TransferService: Reading NDEF URL...")
+
+        do {
+            // Step 1: Select NDEF Application
+            guard let selectAppAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x04, 0x00] + [UInt8(NDEF_AID.count)] + NDEF_AID + [0x00])) else {
+                throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF Application APDU"))
+            }
+            let (_, selectAppSW1, selectAppSW2) = try await tag.sendCommand(apdu: selectAppAPDU)
+
+            guard selectAppSW1 == 0x90 && selectAppSW2 == 0x00 else {
+                throw AppError.nfc(.readWriteFailed("Failed to select NDEF application: \(selectAppSW1) \(selectAppSW2)"))
+            }
+            print("TransferService: NDEF Application selected")
+
+            // Step 2: Select NDEF File
+            guard let selectFileAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x00, 0x0C, 0x02] + NDEF_FILE_ID)) else {
+                throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF File APDU"))
+            }
+            let (_, selectFileSW1, selectFileSW2) = try await tag.sendCommand(apdu: selectFileAPDU)
+
+            guard selectFileSW1 == 0x90 && selectFileSW2 == 0x00 else {
+                throw AppError.nfc(.readWriteFailed("Failed to select NDEF file: \(selectFileSW1) \(selectFileSW2)"))
+            }
+            print("TransferService: NDEF File selected")
+
+            // Step 3: Read NLEN (2 bytes at offset 0) to get NDEF message length
+            guard let readNlenAPDU = NFCISO7816APDU(data: Data([0x00, 0xB0, 0x00, 0x00, 0x02])) else {
+                throw AppError.nfc(.readWriteFailed("Failed to create READ NLEN APDU"))
+            }
+            let (readNlenData, readNlenSW1, readNlenSW2) = try await tag.sendCommand(apdu: readNlenAPDU)
+
+            guard readNlenSW1 == 0x90 && readNlenSW2 == 0x00 else {
+                throw AppError.nfc(.readWriteFailed("Failed to read NLEN: \(readNlenSW1) \(readNlenSW2)"))
+            }
+
+            let nlen = UInt16(readNlenData[0]) << 8 | UInt16(readNlenData[1])
+            if nlen == 0 {
+                print("TransferService: No NDEF data (NLEN = 0)")
+                return nil
+            }
+
+            print("TransferService: NLEN = \(nlen) bytes")
+
+            // Step 4: Read actual NDEF data (starting from offset 2)
+            var ndefData = Data()
+            var currentOffset: UInt16 = 2
+            let maxReadLength: UInt8 = 255 - 2
+
+            while ndefData.count < Int(nlen) {
+                let bytesToRead = min(Int(nlen) - ndefData.count, Int(maxReadLength))
+
+                guard let readBinaryAPDU = NFCISO7816APDU(data: Data([
+                    0x00, 0xB0,
+                    UInt8((currentOffset >> 8) & 0xFF),
+                    UInt8(currentOffset & 0xFF),
+                    UInt8(bytesToRead)
+                ])) else {
+                    throw AppError.nfc(.readWriteFailed("Failed to create READ BINARY APDU"))
+                }
+
+                let (readData, readSW1, readSW2) = try await tag.sendCommand(apdu: readBinaryAPDU)
+
+                guard readSW1 == 0x90 && readSW2 == 0x00 else {
+                    throw AppError.nfc(.readWriteFailed("Failed to read NDEF data chunk: \(readSW1) \(readSW2)"))
+                }
+
+                ndefData.append(readData)
+                currentOffset += UInt16(bytesToRead)
+            }
+
+            // Parse the NDEF URL
+            return parseNDEFUrl(from: ndefData)
+
+        } catch {
+            print("TransferService: Error reading NDEF: \(error)")
+            throw error
+        }
+    }
+
+    /// Parse NDEF URL record from raw data
+    private func parseNDEFUrl(from data: Data) -> String? {
+        guard data.count >= 7 else {
+            print("TransferService: NDEF data too short")
+            return nil
+        }
+
+        // Parse NDEF record
+        let flags = data[0]
+        let typeLength = data[1]
+        let payloadLength = data[2]
+        let typeStart = 3
+        let payloadStart = typeStart + Int(typeLength)
+
+        guard data.count >= payloadStart + Int(payloadLength) else {
+            print("TransferService: NDEF data truncated")
+            return nil
+        }
+
+        let typeData = data.subdata(in: typeStart..<payloadStart)
+        let payloadData = data.subdata(in: payloadStart..<payloadStart + Int(payloadLength))
+
+        // Check if this is a URI record
+        guard typeData.count == 1 && typeData[0] == 0x55 else { // URI record type
+            print("TransferService: Not a URI record")
+            return nil
+        }
+
+        // Parse URI payload
+        guard payloadData.count >= 1 else {
+            print("TransferService: URI payload too short")
+            return nil
+        }
+
+        let uriIdentifierCode = payloadData[0]
+        let uriData = payloadData.subdata(in: 1..<payloadData.count)
+
+        // URI identifier codes (RFC 3986)
+        let uriPrefixes = [
+            "", // 0x00: no prefix
+            "http://www.", // 0x01
+            "https://www.", // 0x02
+            "http://", // 0x03
+            "https://", // 0x04
+            "tel:", // 0x05
+            "mailto:", // 0x06
+            "ftp://anonymous:anonymous@", // 0x07
+            "ftp://ftp.", // 0x08
+            "ftps://", // 0x09
+            "sftp://", // 0x0A
+            "smb://", // 0x0B
+            "nfs://", // 0x0C
+            "ftp://", // 0x0D
+            "dav://", // 0x0E
+            "news:", // 0x0F
+            "telnet://", // 0x10
+            "imap:", // 0x11
+            "rtsp://", // 0x12
+            "urn:", // 0x13
+            "pop:", // 0x14
+            "sip:", // 0x15
+            "sips:", // 0x16
+            "tftp:", // 0x17
+            "btspp://", // 0x18
+            "btl2cap://", // 0x19
+            "btgoep://", // 0x1A
+            "tcpobex://", // 0x1B
+            "irdaobex://", // 0x1C
+            "file://", // 0x1D
+            "urn:epc:id:", // 0x1E
+            "urn:epc:tag:", // 0x1F
+            "urn:epc:pat:", // 0x20
+            "urn:epc:raw:", // 0x21
+            "urn:epc:", // 0x22
+            "urn:nfc:" // 0x23
+        ]
+
+        var prefix = ""
+        if Int(uriIdentifierCode) < uriPrefixes.count {
+            prefix = uriPrefixes[Int(uriIdentifierCode)]
+        }
+
+        guard let uriString = String(data: uriData, encoding: .utf8) else {
+            print("TransferService: Failed to decode URI string")
+            return nil
+        }
+
+        let fullUrl = prefix + uriString
+        print("TransferService: Successfully parsed NDEF URL: \(fullUrl)")
+        return fullUrl
     }
 
     /// Read public key from chip

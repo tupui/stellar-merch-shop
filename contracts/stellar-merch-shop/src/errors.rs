@@ -21,4 +21,6 @@ pub enum NonFungibleTokenError {
     InvalidRoyaltyAmount = 212,
     /// Indicates an invalid signature
     InvalidSignature = 214,
+    /// Indicates the token exists but has not been claimed yet
+    TokenNotClaimed = 215,
 }

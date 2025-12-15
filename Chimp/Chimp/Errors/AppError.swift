@@ -149,6 +149,9 @@ enum ContractError: LocalizedError {
     // Error code 214: InvalidSignature - Indicates an invalid signature
     case invalidSignature
 
+    // Error code 215: TokenNotClaimed - Indicates the token exists but has not been claimed yet
+    case tokenNotClaimed
+
     // Unknown error code from contract
     case unknown(code: UInt32)
 
@@ -170,6 +173,8 @@ enum ContractError: LocalizedError {
             return "Invalid royalty percentage."
         case .invalidSignature:
             return "Invalid signature detected."
+        case .tokenNotClaimed:
+            return "Token exists but has not been claimed yet."
         case .unknown(let code):
             return "Contract error (code \(code))."
         }
@@ -186,6 +191,7 @@ enum ContractError: LocalizedError {
         case .tokenAlreadyMinted: return 210
         case .invalidRoyaltyAmount: return 212
         case .invalidSignature: return 214
+        case .tokenNotClaimed: return 215
         case .unknown(let code): return code
         }
     }
@@ -201,6 +207,7 @@ enum ContractError: LocalizedError {
         case 210: return .tokenAlreadyMinted
         case 212: return .invalidRoyaltyAmount
         case 214: return .invalidSignature
+        case 215: return .tokenNotClaimed
         default: return .unknown(code: code)
         }
     }
@@ -234,10 +241,23 @@ enum ContractError: LocalizedError {
         if errorString.contains("214") || errorString.contains("InvalidSignature") {
             return .invalidSignature
         }
+        if errorString.contains("215") || errorString.contains("TokenNotClaimed") {
+            return .tokenNotClaimed
+        }
 
         // Try to extract numeric error code using regex patterns
         let pattern1 = #"Error\(Contract,\s*#(\d+)\)"#
         if let regex = try? NSRegularExpression(pattern: pattern1, options: []),
+           let match = regex.firstMatch(in: errorString, options: [], range: NSRange(location: 0, length: errorString.utf16.count)),
+           match.numberOfRanges > 1,
+           let range = Range(match.range(at: 1), in: errorString),
+           let code = UInt32(errorString[range]) {
+            return ContractError.fromCode(code)
+        }
+
+        // Try a simpler pattern for Error(Contract, #XXX)
+        let pattern1b = #"Error\(Contract, #(\d+)\)"#
+        if let regex = try? NSRegularExpression(pattern: pattern1b, options: []),
            let match = regex.firstMatch(in: errorString, options: [], range: NSRange(location: 0, length: errorString.utf16.count)),
            match.numberOfRanges > 1,
            let range = Range(match.range(at: 1), in: errorString),
@@ -256,8 +276,19 @@ enum ContractError: LocalizedError {
             return ContractError.fromCode(code)
         }
 
+        // Pattern 3: Look for the specific format in diagnostic data: [\"failing with contract error\", 215]
+        let pattern3 = #"\["failing with contract error", (\d+)\]"#
+        if let regex = try? NSRegularExpression(pattern: pattern3, options: []),
+           let match = regex.firstMatch(in: errorString, options: [], range: NSRange(location: 0, length: errorString.utf16.count)),
+           match.numberOfRanges > 1,
+           let range = Range(match.range(at: 1), in: errorString),
+           let code = UInt32(errorString[range]) {
+            return ContractError.fromCode(code)
+        }
+
         return nil
     }
+
 }
 
 // MARK: - NFC Errors

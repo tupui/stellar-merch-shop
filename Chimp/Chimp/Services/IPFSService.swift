@@ -58,8 +58,18 @@ class IPFSService {
 
         // Check HTTP response
         if let httpResponse = response as? HTTPURLResponse {
+            print("IPFSService: HTTP status: \(httpResponse.statusCode)")
             guard (200...299).contains(httpResponse.statusCode) else {
                 throw AppError.ipfs(.downloadFailed("HTTP \(httpResponse.statusCode)"))
+            }
+        }
+
+        // Debug: Check if response looks like HTML (error page)
+        if let responseString = String(data: data, encoding: .utf8) {
+            if responseString.hasPrefix("<!DOCTYPE") || responseString.hasPrefix("<html") || responseString.contains("<html") {
+                print("IPFSService: ERROR - Received HTML instead of JSON. This might be an IPFS gateway error page.")
+                print("IPFSService: Response preview: \(responseString.prefix(200))...")
+                throw AppError.ipfs(.parseFailed("IPFS gateway returned HTML error page instead of JSON"))
             }
         }
 
@@ -74,6 +84,10 @@ class IPFSService {
             return metadata
         } catch {
             print("IPFSService: Failed to parse JSON: \(error)")
+            // Debug: Show first 500 chars of response
+            if let responseString = String(data: data, encoding: .utf8) {
+                print("IPFSService: Raw response (first 500 chars): \(responseString.prefix(500))")
+            }
             throw AppError.ipfs(.parseFailed(error.localizedDescription))
         }
     }
@@ -103,18 +117,29 @@ class IPFSService {
     }
 
     /// Convert IPFS URL to HTTP gateway URL if needed
-    /// - Parameter ipfsUrl: IPFS URL or IPFS hash
+    /// - Parameter ipfsUrl: IPFS URL, IPFS hash, or HTTP URL
     /// - Returns: HTTP gateway URL
     func convertToHTTPGateway(_ ipfsUrl: String) -> String {
+        // If it's already an HTTP/HTTPS URL, return as-is
+        if ipfsUrl.hasPrefix("http://") || ipfsUrl.hasPrefix("https://") {
+            print("IPFSService: URL is already HTTP: \(ipfsUrl)")
+            return ipfsUrl
+        }
+
+        // If it's an IPFS URL, convert to gateway
         if ipfsUrl.hasPrefix("ipfs://") {
             let hash = ipfsUrl.replacingOccurrences(of: "ipfs://", with: "")
             return "https://ipfs.io/ipfs/\(hash)"
-        } else if ipfsUrl.hasPrefix("https://ipfs.io/ipfs/") {
-            return ipfsUrl
-        } else {
-            // Assume it's just a hash and prepend gateway
+        }
+
+        // If it starts with a hash-like pattern (Qm..., bafy...), assume it's just a hash
+        if ipfsUrl.hasPrefix("Qm") || ipfsUrl.hasPrefix("bafy") || ipfsUrl.hasPrefix("bafk") {
             return "https://ipfs.io/ipfs/\(ipfsUrl)"
         }
+
+        // For anything else, try to use it as-is but log a warning
+        print("IPFSService: WARNING - Unrecognized URI format: \(ipfsUrl)")
+        return ipfsUrl
     }
 }
 

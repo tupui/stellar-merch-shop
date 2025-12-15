@@ -27,8 +27,30 @@ export class BlockchainOperations {
     }
 
     const reader = this.nfcManager.getReader();
-    if (!this.nfcManager.verifyConnection() || !reader.connection) {
+    if (!this.nfcManager.verifyConnection()) {
       throw new Error("Connection not available");
+    }
+
+    // For manually detected cards, try to establish connection if needed
+    if (!reader.connection) {
+      console.log('BlockchainOps: Establishing connection for application selection...');
+      try {
+        // Set the blockchain AID before connecting (try hex string format)
+        reader.aid = BLOCKCHAIN_AID.toString('hex');
+        await reader.connect();
+        console.log('BlockchainOps: Connection established successfully');
+      } catch (connectError) {
+        console.log('BlockchainOps: Connection failed:', connectError.message);
+        // Try with Buffer format
+        try {
+          reader.aid = BLOCKCHAIN_AID;
+          await reader.connect();
+          console.log('BlockchainOps: Connection established with Buffer AID');
+        } catch (retryError) {
+          console.log('BlockchainOps: Connection retry failed:', retryError.message);
+          throw new Error("Failed to establish connection to card");
+        }
+      }
     }
 
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -82,8 +104,30 @@ export class BlockchainOperations {
    */
   async getKeyInfo(keyHandle = 1) {
     const reader = this.nfcManager.getReader();
-    if (!this.nfcManager.verifyConnection() || !reader.connection) {
+    if (!this.nfcManager.verifyConnection()) {
       throw new Error("Connection not available");
+    }
+
+    // For manually detected cards, try to establish connection if needed
+    if (!reader.connection) {
+      console.log('BlockchainOps: Establishing connection for key operation...');
+      try {
+        // Set the blockchain AID before connecting (try hex string format)
+        reader.aid = BLOCKCHAIN_AID.toString('hex');
+        await reader.connect();
+        console.log('BlockchainOps: Connection established successfully');
+      } catch (connectError) {
+        console.log('BlockchainOps: Connection failed:', connectError.message);
+        // Try with Buffer format
+        try {
+          reader.aid = BLOCKCHAIN_AID;
+          await reader.connect();
+          console.log('BlockchainOps: Connection established with Buffer AID');
+        } catch (retryError) {
+          console.log('BlockchainOps: Connection retry failed:', retryError.message);
+          throw new Error("Failed to establish connection to card");
+        }
+      }
     }
 
     if (keyHandle < 0 || keyHandle > 255) {

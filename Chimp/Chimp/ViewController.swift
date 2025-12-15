@@ -264,7 +264,7 @@ class SignaturePopupViewController: UIViewController {
 }
 
 /// Contains the user interface controller code of the main screen
-class ViewController: UIViewController {
+class ViewController: UIViewController, NFCTagReaderSessionDelegate {
     let TAG: String = "MainViewController"
     
     var scanButton: UIButton!
@@ -277,12 +277,13 @@ class ViewController: UIViewController {
     var loadingIndicator: UIActivityIndicatorView!
 
     var nfc_helper: NFCHelper?
-    var walletService: WalletService!
-    var claimService: ClaimService!
-    var transferService: TransferService!
-    var mintService: MintService!
-    var blockchainService: BlockchainService!
-    var ipfsService: IPFSService!
+    var session: NFCTagReaderSession?
+    private let walletService = WalletService()
+    private let claimService = ClaimService()
+    private let transferService = TransferService()
+    private let mintService = MintService()
+    private let blockchainService = BlockchainService()
+    private let ipfsService = IPFSService()
     var confettiView: ConfettiView?
     
     /// Stores the key index selected by the user. Default value is 1
@@ -299,14 +300,7 @@ class ViewController: UIViewController {
     // MARK: - View controller events
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        walletService = WalletService()
-        claimService = ClaimService()
-        transferService = TransferService()
-        mintService = MintService()
-        blockchainService = BlockchainService()
-        ipfsService = IPFSService()
-        
+
         ConfigureViews()
         ResetDefaults()
     }
@@ -335,11 +329,406 @@ class ViewController: UIViewController {
         scanButton.isEnabled = false
         loadingIndicator.startAnimating()
 
-        // Start NFC session to read NDEF
-        nfc_helper = NFCHelper()
-        nfc_helper?.OnNDEFEvent = self.OnNDEFEvent(success:url:error:)
-        nfc_helper?.OnImmediateError = self.OnImmediateError(error:)
-        nfc_helper?.BeginSession()
+        // Start NFC session to read chip data and get token ID
+        startLoadNFTSession()
+    }
+
+    /// Start NFC session for loading NFT (reads contract ID from NDEF and public key from chip)
+    private func startLoadNFTSession() {
+        print(TAG + ": Starting Load NFT NFC session")
+
+        guard NFCTagReaderSession.readingAvailable else {
+            DispatchQueue.main.async {
+                self.showNFTError("NFC is not available on this device")
+                self.enableAllButtons()
+                self.loadingIndicator.stopAnimating()
+            }
+            return
+        }
+
+        session = NFCTagReaderSession(pollingOption: .iso14443, delegate: self, queue: nil)
+        session?.alertMessage = "Tap NFC chip to load NFT"
+        session?.begin()
+    }
+
+    // MARK: - NFCTagReaderSessionDelegate Methods
+
+    func tagReaderSessionDidBecomeActive(_ session: NFCTagReaderSession) {
+        print(TAG + ": Load NFT session became active")
+    }
+
+    func tagReaderSession(_ session: NFCTagReaderSession, didInvalidateWithError error: Error) {
+        print(TAG + ": Load NFT session invalidated with error: \(error)")
+        DispatchQueue.main.async {
+            self.enableAllButtons()
+            self.loadingIndicator.stopAnimating()
+            if let nfcError = error as? NFCReaderError {
+                switch nfcError.code {
+                case .readerSessionInvalidationErrorUserCanceled:
+                    // User canceled, no need to show error
+                    break
+                default:
+                    self.showNFTError("NFC Error: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    func tagReaderSession(_ session: NFCTagReaderSession, didDetect tags: [NFCTag]) {
+        print(TAG + ": Load NFT session detected \(tags.count) tags")
+
+        guard let firstTag = tags.first else {
+            session.invalidate(errorMessage: "No NFC tag found")
+            return
+        }
+
+        Task {
+            do {
+                try await self.handleLoadNFTTag(tag: firstTag, session: session)
+            } catch {
+                await MainActor.run {
+                    let errorMessage = (error as? AppError)?.localizedDescription ?? "Failed to load NFT"
+                    session.invalidate(errorMessage: errorMessage)
+                }
+            }
+        }
+    }
+
+    /// Handle Load NFT tag detection - read NDEF and chip public key
+    private func handleLoadNFTTag(tag: NFCTag, session: NFCTagReaderSession) async throws {
+        guard case .iso7816(let iso7816Tag) = tag else {
+            throw AppError.nfc(.invalidTag)
+        }
+
+        session.connect(to: tag) { [weak self] error in
+            if let error = error {
+                print((self?.TAG ?? "ViewController") + ": Failed to connect to tag: \(error)")
+                session.invalidate(errorMessage: "Failed to connect to NFC tag")
+                return
+            }
+        }
+
+        // First, read NDEF to get contract ID using APDU commands
+        let ndefUrl = try await readNDEFUrl(tag: iso7816Tag, session: session)
+        guard let ndefUrl = ndefUrl else {
+            throw AppError.nfc(.readWriteFailed("No NDEF URL found"))
+        }
+
+        print(TAG + ": NDEF URL read: \(ndefUrl)")
+
+        // Parse contract ID from URL
+        guard let contractId = parseContractIdFromNDEFUrl(ndefUrl) else {
+            throw AppError.validation("Invalid contract ID in NFC tag")
+        }
+
+        print(TAG + ": Parsed contract ID: \(contractId)")
+
+        // Now read the chip's public key
+        let chipPublicKey = try await readChipPublicKey(tag: iso7816Tag, session: session, keyIndex: 0x01)
+        print(TAG + ": Read chip public key: \(chipPublicKey)")
+
+        // Convert public key string to Data
+        guard let publicKeyData = Data(hexString: chipPublicKey) else {
+            throw AppError.crypto(.invalidKey("Invalid public key format from chip"))
+        }
+
+        // Get token ID for this chip
+        let tokenId = try await getTokenIdForChip(contractId: contractId, publicKey: publicKeyData)
+        print(TAG + ": Got token ID \(tokenId) for chip")
+
+        // Close NFC session
+        await MainActor.run {
+            session.invalidate()
+        }
+
+        // Check wallet exists for contract calls
+        guard walletService.getStoredWallet() != nil else {
+            throw AppError.nft(.noWallet)
+        }
+
+        // Get private key from secure storage
+        let secureStorage = SecureKeyStorage()
+        guard let privateKey = try secureStorage.loadPrivateKey() else {
+            throw AppError.nft(.noWallet)
+        }
+        let keyPair = try KeyPair(secretSeed: privateKey)
+
+        // Try to get the owner - if this succeeds, the NFT is claimed
+        do {
+            print(TAG + ": Checking ownership for token \(tokenId)")
+            let ownerAddress = try await blockchainService.getTokenOwner(
+                contractId: contractId,
+                tokenId: tokenId,
+                sourceKeyPair: keyPair
+            )
+            print(TAG + ": Token \(tokenId) has owner: \(ownerAddress), loading as claimed NFT")
+            // NFT has an owner, load as claimed
+            try await loadNFT(contractId: contractId, tokenId: tokenId, keyPair: keyPair)
+        } catch let appError as AppError {
+            // Check if this is a contract error indicating the token is not claimed
+            if case .blockchain(.contract(.tokenNotClaimed)) = appError {
+                print(TAG + ": Token \(tokenId) is unclaimed, loading as unclaimed NFT")
+                try await loadUnclaimedNFT(contractId: contractId, tokenId: tokenId, keyPair: keyPair)
+            } else {
+                print(TAG + ": Token \(tokenId) ownership check failed with unexpected error: \(appError)")
+                throw appError
+            }
+        } catch {
+            print(TAG + ": Token \(tokenId) ownership check failed with unknown error: \(error), trying as unclaimed NFT")
+            // For backward compatibility, treat unknown errors as unclaimed
+            try await loadUnclaimedNFT(contractId: contractId, tokenId: tokenId, keyPair: keyPair)
+        }
+    }
+
+    /// Parse contract ID from NDEF URL (extracts the contract ID part)
+    private func parseContractIdFromNDEFUrl(_ url: String) -> String? {
+        // Remove protocol if present
+        var urlPath = url
+        if urlPath.hasPrefix("http://") {
+            urlPath = String(urlPath.dropFirst(7))
+        } else if urlPath.hasPrefix("https://") {
+            urlPath = String(urlPath.dropFirst(8))
+        }
+
+        // Split by '/' and expect contract ID as second component
+        let components = urlPath.split(separator: "/", omittingEmptySubsequences: true)
+        guard components.count >= 2 else {
+            return nil
+        }
+
+        let contractId = String(components[1])
+
+        // Validate contract ID format
+        guard contractId.count == 56 && contractId.hasPrefix("C") else {
+            return nil
+        }
+
+        return contractId
+    }
+
+    /// Get token ID for a chip's public key
+    private func getTokenIdForChip(contractId: String, publicKey: Data) async throws -> UInt64 {
+        print(TAG + ": Getting token ID for chip with public key: \(publicKey.map { String(format: "%02x", $0) }.joined())")
+
+        // Create keypair for contract calls
+        guard walletService.getStoredWallet() != nil,
+              let privateKey = try SecureKeyStorage().loadPrivateKey() else {
+            throw AppError.wallet(.noWallet)
+        }
+
+        let keyPair = try KeyPair(secretSeed: privateKey)
+
+        // Use the blockchain service method
+        return try await blockchainService.getTokenId(contractId: contractId, publicKey: publicKey, sourceKeyPair: keyPair)
+    }
+
+    // MARK: - NDEF Reading (copied from NFCHelper)
+
+    /// NDEF Application ID
+    private let NDEF_AID: [UInt8] = [0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01]
+
+    /// NDEF File ID
+    private let NDEF_FILE_ID: [UInt8] = [0xE1, 0x04]
+
+    /// Read NDEF URL from chip using APDU commands
+    private func readNDEFUrl(tag: NFCISO7816Tag, session: NFCTagReaderSession) async throws -> String? {
+        print(TAG + ": Reading NDEF URL...")
+
+        do {
+            // Step 1: Select NDEF Application
+            guard let selectAppAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x04, 0x00] + [UInt8(NDEF_AID.count)] + NDEF_AID + [0x00])) else {
+                print(TAG + ": Failed to create SELECT NDEF Application APDU")
+                return nil
+            }
+            let (_, selectAppSW1, selectAppSW2) = try await tag.sendCommand(apdu: selectAppAPDU)
+
+            guard selectAppSW1 == 0x90 && selectAppSW2 == 0x00 else {
+                print(TAG + ": Failed to select NDEF application: \(selectAppSW1) \(selectAppSW2)")
+                return nil
+            }
+            print(TAG + ": NDEF Application selected")
+
+            // Step 2: Select NDEF File
+            guard let selectFileAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x00, 0x0C, 0x02] + NDEF_FILE_ID)) else {
+                print(TAG + ": Failed to create SELECT NDEF File APDU")
+                return nil
+            }
+            let (_, selectFileSW1, selectFileSW2) = try await tag.sendCommand(apdu: selectFileAPDU)
+
+            guard selectFileSW1 == 0x90 && selectFileSW2 == 0x00 else {
+                print(TAG + ": Failed to select NDEF file: \(selectFileSW1) \(selectFileSW2)")
+                return nil
+            }
+            print(TAG + ": NDEF File selected")
+
+            // Step 3: Read NLEN (2 bytes at offset 0) to get NDEF message length
+            guard let readNlenAPDU = NFCISO7816APDU(data: Data([0x00, 0xB0, 0x00, 0x00, 0x02])) else {
+                print(TAG + ": Failed to create READ NLEN APDU")
+                return nil
+            }
+            let (readNlenData, readNlenSW1, readNlenSW2) = try await tag.sendCommand(apdu: readNlenAPDU)
+
+            guard readNlenSW1 == 0x90 && readNlenSW2 == 0x00 else {
+                print(TAG + ": Failed to read NLEN: \(readNlenSW1) \(readNlenSW2)")
+                return nil
+            }
+
+            let nlen = UInt16(readNlenData[0]) << 8 | UInt16(readNlenData[1])
+            if nlen == 0 {
+                print(TAG + ": No NDEF data (NLEN = 0)")
+                return nil
+            }
+
+            print(TAG + ": NLEN = \(nlen) bytes")
+
+            // Step 4: Read actual NDEF data (starting from offset 2)
+            var ndefData = Data()
+            var currentOffset: UInt16 = 2
+            let maxReadLength: UInt8 = 255 - 2
+
+            while ndefData.count < Int(nlen) {
+                let bytesToRead = min(Int(nlen) - ndefData.count, Int(maxReadLength))
+
+                guard let readBinaryAPDU = NFCISO7816APDU(data: Data([
+                    0x00, 0xB0,
+                    UInt8((currentOffset >> 8) & 0xFF),
+                    UInt8(currentOffset & 0xFF),
+                    UInt8(bytesToRead)
+                ])) else {
+                    print(TAG + ": Failed to create READ BINARY APDU")
+                    return nil
+                }
+
+                let (readData, readSW1, readSW2) = try await tag.sendCommand(apdu: readBinaryAPDU)
+
+                guard readSW1 == 0x90 && readSW2 == 0x00 else {
+                    print(TAG + ": Failed to read NDEF data chunk: \(readSW1) \(readSW2)")
+                    return nil
+                }
+
+                ndefData.append(readData)
+                currentOffset += UInt16(bytesToRead)
+            }
+
+            // Parse the NDEF URL
+            return parseNDEFUrl(from: ndefData)
+
+        } catch {
+            print(TAG + ": Error reading NDEF: \(error)")
+            throw error
+        }
+    }
+
+    /// Parse NDEF URL record from raw data
+    private func parseNDEFUrl(from data: Data) -> String? {
+        guard data.count >= 7 else {
+            print(TAG + ": NDEF data too short")
+            return nil
+        }
+
+        // Parse NDEF record
+        let flags = data[0]
+        let typeLength = data[1]
+        let payloadLength = data[2]
+        let typeStart = 3
+        let payloadStart = typeStart + Int(typeLength)
+
+        guard data.count >= payloadStart + Int(payloadLength) else {
+            print(TAG + ": NDEF data truncated")
+            return nil
+        }
+
+        let typeData = data.subdata(in: typeStart..<payloadStart)
+        let payloadData = data.subdata(in: payloadStart..<payloadStart + Int(payloadLength))
+
+        // Check if this is a URI record
+        guard typeData.count == 1 && typeData[0] == 0x55 else { // URI record type
+            print(TAG + ": Not a URI record")
+            return nil
+        }
+
+        // Parse URI payload
+        guard payloadData.count >= 1 else {
+            print(TAG + ": URI payload too short")
+            return nil
+        }
+
+        let uriIdentifierCode = payloadData[0]
+        let uriData = payloadData.subdata(in: 1..<payloadData.count)
+
+        // URI identifier codes (RFC 3986)
+        let uriPrefixes = [
+            "", // 0x00: no prefix
+            "http://www.", // 0x01
+            "https://www.", // 0x02
+            "http://", // 0x03
+            "https://", // 0x04
+            "tel:", // 0x05
+            "mailto:", // 0x06
+            "ftp://anonymous:anonymous@", // 0x07
+            "ftp://ftp.", // 0x08
+            "ftps://", // 0x09
+            "sftp://", // 0x0A
+            "smb://", // 0x0B
+            "nfs://", // 0x0C
+            "ftp://", // 0x0D
+            "dav://", // 0x0E
+            "news:", // 0x0F
+            "telnet://", // 0x10
+            "imap:", // 0x11
+            "rtsp://", // 0x12
+            "urn:", // 0x13
+            "pop:", // 0x14
+            "sip:", // 0x15
+            "sips:", // 0x16
+            "tftp:", // 0x17
+            "btspp://", // 0x18
+            "btl2cap://", // 0x19
+            "btgoep://", // 0x1A
+            "tcpobex://", // 0x1B
+            "irdaobex://", // 0x1C
+            "file://", // 0x1D
+            "urn:epc:id:", // 0x1E
+            "urn:epc:tag:", // 0x1F
+            "urn:epc:pat:", // 0x20
+            "urn:epc:raw:", // 0x21
+            "urn:epc:", // 0x22
+            "urn:nfc:" // 0x23
+        ]
+
+        var prefix = ""
+        if Int(uriIdentifierCode) < uriPrefixes.count {
+            prefix = uriPrefixes[Int(uriIdentifierCode)]
+        }
+
+        guard let uriString = String(data: uriData, encoding: .utf8) else {
+            print(TAG + ": Failed to decode URI string")
+            return nil
+        }
+
+        let fullUrl = prefix + uriString
+        print(TAG + ": Successfully parsed NDEF URL: \(fullUrl)")
+        return fullUrl
+    }
+
+    /// Read public key from chip
+    private func readChipPublicKey(tag: NFCISO7816Tag, session: NFCTagReaderSession, keyIndex: UInt8) async throws -> String {
+        return try await withCheckedThrowingContinuation { continuation in
+            let commandHandler = BlockchainCommandHandler(tag_iso7816: tag, reader_session: session)
+            commandHandler.ActionGetKey(key_index: keyIndex) { success, response, error, session in
+                if success, let response = response, response.count >= 73 {
+                    // Extract public key (skip first 9 bytes: 4 bytes global counter + 4 bytes signature counter + 1 byte 0x04)
+                    let publicKeyData = response.subdata(in: 9..<73) // 64 bytes of public key
+                    // Add 0x04 prefix for uncompressed format
+                    var fullPublicKey = Data([0x04])
+                    fullPublicKey.append(publicKeyData)
+                    let publicKeyHex = fullPublicKey.map { String(format: "%02x", $0) }.joined()
+                    continuation.resume(returning: publicKeyHex)
+                } else {
+                    continuation.resume(throwing: AppError.nfc(.chipError(error ?? "Failed to read chip public key")))
+                }
+            }
+        }
     }
 
     /// Handles immediate NFC error feedback
@@ -394,11 +783,20 @@ class ViewController: UIViewController {
                             )
                             print("LoadNFT: Token \(tokenId) has owner: \(ownerAddress), loading as claimed NFT")
                             // NFT has an owner, load as claimed
-                            try await self.loadNFT(contractId: contractId, tokenId: tokenId)
+                            try await self.loadNFT(contractId: contractId, tokenId: tokenId, keyPair: keyPair)
+                        } catch let appError as AppError {
+                            // Check if this is a contract error indicating the token is not claimed
+                            if case .blockchain(.contract(.tokenNotClaimed)) = appError {
+                                print("LoadNFT: Token \(tokenId) is unclaimed, loading as unclaimed NFT")
+                                try await self.loadUnclaimedNFT(contractId: contractId, tokenId: tokenId, keyPair: keyPair)
+                            } else {
+                                print("LoadNFT: Token \(tokenId) ownership check failed with unexpected error: \(appError)")
+                                throw appError
+                            }
                         } catch {
-                            print("LoadNFT: Token \(tokenId) ownership check failed: \(error), trying as unclaimed NFT")
-                            // getTokenOwner failed, assume token is unclaimed and try loading
-                            try await self.loadUnclaimedNFT(contractId: contractId, tokenId: tokenId)
+                            print("LoadNFT: Token \(tokenId) ownership check failed with unknown error: \(error), trying as unclaimed NFT")
+                            // For backward compatibility, treat unknown errors as unclaimed
+                            try await self.loadUnclaimedNFT(contractId: contractId, tokenId: tokenId, keyPair: keyPair)
                         }
                     } catch let _ as AppError {
                         // Error will be handled in the NFT view if needed
@@ -436,8 +834,9 @@ class ViewController: UIViewController {
 
         // Split by '/' and expect at least 3 parts: [base]/[contractID]/[token_id]
         let components = urlPath.split(separator: "/", omittingEmptySubsequences: true)
+        print(TAG + ": URL path components: \(components)")
         guard components.count >= 3 else {
-            print(TAG + ": URL doesn't have expected format: \(url)")
+            print(TAG + ": URL doesn't have expected format (need at least 3 components): \(url)")
             return nil
         }
 
@@ -446,17 +845,27 @@ class ViewController: UIViewController {
         let contractId = String(components[components.count - 2])
         let tokenIdString = String(components[components.count - 1])
 
+        print(TAG + ": Parsed contractId: \(contractId), tokenIdString: \(tokenIdString)")
+
         // Validate contract ID format (should be 56 characters, start with 'C')
         guard contractId.count == 56 && contractId.hasPrefix("C") else {
-            print(TAG + ": Invalid contract ID format: \(contractId)")
+            print(TAG + ": Invalid contract ID format (should be 56 chars starting with 'C'): \(contractId)")
             return nil
         }
 
         // Parse token ID
         guard let tokenId = UInt64(tokenIdString) else {
-            print(TAG + ": Invalid token ID: \(tokenIdString)")
+            print(TAG + ": Invalid token ID format (must be numeric): \(tokenIdString)")
             return nil
         }
+
+        // Additional validation: token ID shouldn't be unreasonably large
+        guard tokenId <= UInt64.max / 2 else {
+            print(TAG + ": Token ID too large: \(tokenId)")
+            return nil
+        }
+
+        print(TAG + ": Successfully parsed token ID: \(tokenId)")
 
         return (contractId, tokenId)
     }
@@ -825,39 +1234,73 @@ class ViewController: UIViewController {
                         session: NFCTagReaderSession?, error: String?) {
         if success {
             if let tag = tag, let session = session {
-                Task {
+                // Show loading state immediately on main thread
+                Task { @MainActor in
+                    self.loadingIndicator.startAnimating()
+                    session.alertMessage = "Processing claim... Please wait."
+                }
+
+                // Run blockchain operations on background thread
+                Task.detached {
                     do {
-                        let claimResult = try await claimService.executeClaim(
+                        let claimResult = try await self.claimService.executeClaim(
                             tag: tag,
                             session: session,
-                            keyIndex: selected_keyindex
+                            keyIndex: self.selected_keyindex
                         ) { progress in
-                            // Progress updates removed - no status text displayed
+                            Task { @MainActor in
+                                session.alertMessage = progress
+                            }
                         }
 
+                        // Success - update UI on main thread
                         await MainActor.run {
-                            // Show confetti animation for success
                             self.confettiView?.isHidden = false
                             self.confettiView?.startConfetti()
-
                             self.enableAllButtons()
+                            self.loadingIndicator.stopAnimating()
+                            session.alertMessage = "Claim successful!"
+                        }
 
-                            session.alertMessage = "Claim successful"
+                        // Wait for confetti animation, then invalidate session and load NFT on background thread
+                        try await Task.sleep(nanoseconds: 3_000_000_000)
+
+                        await MainActor.run {
                             session.invalidate()
                         }
 
-                        // After confetti animation, load the NFT
-                        try await Task.sleep(nanoseconds: 3_000_000_000) // Wait for confetti animation (3 seconds)
+                        Task.detached {
+                            do {
+                                // Get keyPair for NFT loading
+                                guard self.walletService.getStoredWallet() != nil else {
+                                    await MainActor.run {
+                                        self.showNFTError("No wallet found")
+                                    }
+                                    return
+                                }
 
-                        // Load the NFT using the token ID from the claim result
-                        try await self.loadNFT(contractId: AppConfig.shared.contractId, tokenId: claimResult.tokenId)
+                                let secureStorage = SecureKeyStorage()
+                                guard let privateKey = try secureStorage.loadPrivateKey() else {
+                                    await MainActor.run {
+                                        self.showNFTError("No private key found")
+                                    }
+                                    return
+                                }
+                                let keyPair = try KeyPair(secretSeed: privateKey)
+
+                                try await self.loadNFT(contractId: AppConfig.shared.contractId, tokenId: claimResult.tokenId, keyPair: keyPair)
+                            } catch {
+                                await MainActor.run {
+                                    self.showNFTError("Failed to load NFT after claim")
+                                }
+                            }
+                        }
                     } catch {
+                        // Error - update UI on main thread
                         await MainActor.run {
-                            // Use standard AppError messages (NFC modal will truncate long ones)
                             let errorMessage = (error as? AppError)?.localizedDescription ?? "Claim failed"
-
                             self.enableAllButtons()
-
+                            self.loadingIndicator.stopAnimating()
                             session.invalidate(errorMessage: errorMessage)
                         }
                     }
@@ -884,32 +1327,39 @@ class ViewController: UIViewController {
                     return
                 }
 
-                Task {
+                // Show loading state immediately
+                Task { @MainActor in
+                    self.loadingIndicator.startAnimating()
+                    session.alertMessage = "Processing transfer... Please wait."
+                }
+
+                // Run blockchain operations on background thread
+                Task.detached {
                     do {
-                        _ = try await transferService.executeTransfer(
+                        _ = try await self.transferService.executeTransfer(
                             tag: tag,
                             session: session,
-                            keyIndex: selected_keyindex,
+                            keyIndex: self.selected_keyindex,
                             recipientAddress: recipientAddress,
                             tokenId: tokenId
                         ) { progress in
-                            // Progress updates removed - no status text displayed
+                            Task { @MainActor in
+                                session.alertMessage = progress
+                            }
                         }
 
+                        // Success - update UI
                         await MainActor.run {
-                            // Show confetti animation for success
                             self.confettiView?.isHidden = false
                             self.confettiView?.startConfetti()
-
-                            session.alertMessage = "Transfer successful"
-                            session.invalidate()
+                            self.loadingIndicator.stopAnimating()
+                            session.alertMessage = "Transfer successful!"
                         }
 
-                        // After confetti animation, show success message
-                        try await Task.sleep(nanoseconds: 3_000_000_000) // Wait for confetti animation (3 seconds)
+                        // After confetti animation, show success message and clean up session
+                        try await Task.sleep(nanoseconds: 3_000_000_000)
 
                         await MainActor.run {
-                            // Ensure clean UI state before presenting alert
                             self.ensureCleanUIState()
 
                             let alert = UIAlertController(
@@ -918,22 +1368,23 @@ class ViewController: UIViewController {
                                 preferredStyle: .alert
                             )
                             alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-                                // Ensure UI is properly reset after alert dismissal
                                 self?.enableAllButtons()
                             })
                             self.present(alert, animated: true)
+
+                            // Invalidate session after showing the alert
+                            session.invalidate()
 
                             // Clear transfer parameters
                             self.transferRecipientAddress = nil
                             self.transferTokenId = nil
                         }
                     } catch {
+                        // Error - update UI
                         await MainActor.run {
-                            // Use standard AppError messages (NFC modal will truncate long ones)
                             let errorMessage = (error as? AppError)?.localizedDescription ?? "Transfer failed"
-
                             self.enableAllButtons()
-
+                            self.loadingIndicator.stopAnimating()
                             session.invalidate(errorMessage: errorMessage)
 
                             // Clear transfer parameters
@@ -958,30 +1409,38 @@ class ViewController: UIViewController {
                         session: NFCTagReaderSession?, error: String?) {
         if success {
             if let tag = tag, let session = session {
-                Task {
+                // Show loading state immediately
+                Task { @MainActor in
+                    self.loadingIndicator.startAnimating()
+                    session.alertMessage = "Processing mint... Please wait."
+                }
+
+                // Run blockchain operations on background thread
+                Task.detached {
                     do {
-                        let mintResult = try await mintService.executeMint(
+                        let mintResult = try await self.mintService.executeMint(
                             tag: tag,
                             session: session,
-                            keyIndex: selected_keyindex
+                            keyIndex: self.selected_keyindex
                         ) { progress in
-                            // Progress updates removed - no status text displayed
+                            Task { @MainActor in
+                                session.alertMessage = progress
+                            }
                         }
 
+                        // Success - update UI
                         await MainActor.run {
-                            // Show confetti animation for success
                             self.confettiView?.isHidden = false
                             self.confettiView?.startConfetti()
-
-                            session.alertMessage = "Mint successful"
-                            session.invalidate()
+                            self.loadingIndicator.stopAnimating()
+                            self.enableAllButtons()
+                            session.alertMessage = "Mint successful!"
                         }
 
-                        // After confetti animation, show success message
-                        try await Task.sleep(nanoseconds: 3_000_000_000) // Wait for confetti animation (3 seconds)
+                        // After confetti animation, show success message and clean up session
+                        try await Task.sleep(nanoseconds: 3_000_000_000)
 
                         await MainActor.run {
-                            // Ensure clean UI state before presenting alert
                             self.ensureCleanUIState()
 
                             let alert = UIAlertController(
@@ -990,18 +1449,19 @@ class ViewController: UIViewController {
                                 preferredStyle: .alert
                             )
                             alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
-                                // Ensure UI is properly reset after alert dismissal
                                 self?.enableAllButtons()
                             })
                             self.present(alert, animated: true)
+
+                            // Invalidate session after showing the alert
+                            session.invalidate()
                         }
                     } catch {
+                        // Error - update UI
                         await MainActor.run {
-                            // Use standard AppError messages (NFC modal will truncate long ones)
                             let errorMessage = (error as? AppError)?.localizedDescription ?? "Mint failed"
-
                             self.enableAllButtons()
-
+                            self.loadingIndicator.stopAnimating()
                             session.invalidate(errorMessage: errorMessage)
                         }
                     }
@@ -1213,20 +1673,8 @@ class ViewController: UIViewController {
     }
 
     // MARK: - NFT Loading
-    private func loadUnclaimedNFT(contractId: String, tokenId: UInt64) async throws {
+    private func loadUnclaimedNFT(contractId: String, tokenId: UInt64, keyPair: KeyPair) async throws {
         do {
-            // Check wallet exists for contract calls
-            guard walletService.getStoredWallet() != nil else {
-                throw AppError.nft(.noWallet)
-            }
-
-            // Get private key from secure storage
-            let secureStorage = SecureKeyStorage()
-            guard let privateKey = try secureStorage.loadPrivateKey() else {
-                throw AppError.nft(.noWallet)
-            }
-            let keyPair = try KeyPair(secretSeed: privateKey)
-
             // Status updates removed - no status text displayed
 
             // First check if the token exists by getting its URI
@@ -1258,38 +1706,25 @@ class ViewController: UIViewController {
                 let navController = UINavigationController(rootViewController: nftView)
                 present(navController, animated: true)
 
-                // Don't update UI if NFT view is already presented
-                if self.presentedViewController == nil {
-                    self.loadingIndicator.stopAnimating()
-                    enableAllButtons()
-                }
+                // Always update UI state when NFT loading completes
+                self.loadingIndicator.stopAnimating()
+                enableAllButtons()
             }
 
+        } catch let appError as AppError {
+            // Handle different error types appropriately
+            await MainActor.run {
+                self.showNFTError(appError.localizedDescription)
+            }
         } catch {
             await MainActor.run {
-                // Don't update UI if NFT view is already presented (means NDEF reading succeeded)
-                if self.presentedViewController == nil {
-                    self.loadingIndicator.stopAnimating()
-                    enableAllButtons()
-                }
+                self.showNFTError("Failed to load NFT information.")
             }
         }
     }
 
-    private func loadNFT(contractId: String, tokenId: UInt64) async throws {
+    private func loadNFT(contractId: String, tokenId: UInt64, keyPair: KeyPair) async throws {
         do {
-            // Check wallet exists for contract calls
-            guard walletService.getStoredWallet() != nil else {
-                throw AppError.nft(.noWallet)
-            }
-
-            // Get private key from secure storage
-            let secureStorage = SecureKeyStorage()
-            guard let privateKey = try secureStorage.loadPrivateKey() else {
-                throw AppError.nft(.noWallet)
-            }
-            let keyPair = try KeyPair(secretSeed: privateKey)
-
             // Status updates removed - no status text displayed
 
             // First check if the token exists by getting its URI
@@ -1336,22 +1771,33 @@ class ViewController: UIViewController {
                 let navController = UINavigationController(rootViewController: nftView)
                 present(navController, animated: true)
 
-                // Don't update UI if NFT view is already presented
-                if self.presentedViewController == nil {
-                    self.loadingIndicator.stopAnimating()
-                    enableAllButtons()
-                }
+                // Always update UI state when NFT loading completes
+                self.loadingIndicator.stopAnimating()
+                enableAllButtons()
             }
 
+        } catch let appError as AppError {
+            // Handle different error types appropriately
+            await MainActor.run {
+                self.showNFTError(appError.localizedDescription)
+            }
         } catch {
             await MainActor.run {
-                // Don't update UI if NFT view is already presented (means NDEF reading succeeded)
-                if self.presentedViewController == nil {
-                    self.loadingIndicator.stopAnimating()
-                    enableAllButtons()
-                }
+                self.showNFTError("Failed to load NFT information.")
             }
         }
+    }
+
+    /// Shows an error alert for NFT loading failures
+    /// - Parameter message: Error message to display
+    private func showNFTError(_ message: String) {
+        let alert = UIAlertController(
+            title: "NFT Error",
+            message: message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 
     /// Shows transfer input dialog for recipient address and token ID

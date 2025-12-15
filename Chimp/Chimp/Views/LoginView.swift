@@ -13,14 +13,13 @@ class LoginView: UIViewController {
     var privateKeyTextField: UITextField!
     var loginButton: UIButton!
     var errorLabel: UILabel!
-    var walletService: WalletService!
-    
+    private let walletService = WalletService()
+
     var onLoginSuccess: (() -> Void)?
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        walletService = WalletService()
+
         configureViews()
     }
     

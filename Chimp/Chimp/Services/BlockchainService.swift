@@ -8,6 +8,11 @@ import stellarsdk
 
 class BlockchainService {
     private let config = AppConfig.shared
+
+    /// Shared RPC client instance to avoid recreation overhead
+    private lazy var rpcClient: SorobanServer = {
+        SorobanServer(endpoint: config.rpcUrl)
+    }()
     
     /// Get owner of a token from the contract
     /// - Parameters:
@@ -27,8 +32,6 @@ class BlockchainService {
             print("BlockchainService: ERROR: Invalid contract ID format: \(contractId)")
             throw AppError.blockchain(.invalidResponse)
         }
-
-        let rpcClient = SorobanServer(endpoint: config.rpcUrl)
 
         // Build the contract call
         let network: Network
@@ -73,7 +76,12 @@ class BlockchainService {
             assembledTx = try await AssembledTransaction.build(options: assembledOptions)
             print("BlockchainService: Transaction built successfully")
         } catch {
-            print("BlockchainService: ERROR building transaction: \(error)")
+            // Check if it's a contract error (simulation errors can bubble up during build)
+            let errorString = "\(error)"
+            if let contractError = ContractError.fromErrorString(errorString) {
+                throw AppError.blockchain(.contract(contractError))
+            }
+
             throw AppError.blockchain(.invalidResponse)
         }
 
@@ -85,7 +93,7 @@ class BlockchainService {
 
         // Simulate to get the return value
         let simulateRequest = SimulateTransactionRequest(transaction: rawTx)
-        let simulateResponse = await rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
+        let simulateResponse = await self.rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
 
         switch simulateResponse {
         case .success(let simulateResult):
@@ -118,7 +126,114 @@ class BlockchainService {
             print("BlockchainService: Token owner retrieved: \(ownerAddress)")
             return ownerAddress
         case .failure(let error):
-            print("BlockchainService: getTokenOwner simulation failed: \(error)")
+            // Check if it's a contract error
+            let errorString = "\(error)"
+            if let contractError = ContractError.fromErrorString(errorString) {
+                throw AppError.blockchain(.contract(contractError))
+            }
+
+            throw AppError.blockchain(.invalidResponse)
+
+            throw AppError.blockchain(.invalidResponse)
+        }
+    }
+
+    /// Get token ID for a given chip public key from the contract
+    /// - Parameters:
+    ///   - contractId: Contract ID
+    ///   - publicKey: Chip's public key (65 bytes, uncompressed SEC1 format)
+    ///   - sourceKeyPair: Source account keypair (must exist on network)
+    /// - Returns: Token ID
+    /// - Throws: AppError if call fails
+    func getTokenId(contractId: String, publicKey: Data, sourceKeyPair: KeyPair) async throws -> UInt64 {
+        print("BlockchainService: getTokenId called")
+        print("BlockchainService: Contract ID: \(contractId)")
+        print("BlockchainService: Public key: \(publicKey.map { String(format: "%02x", $0) }.joined())")
+
+        // Validate contract ID format
+        guard config.validateContractId(contractId) else {
+            print("BlockchainService: ERROR: Invalid contract ID format: \(contractId)")
+            throw AppError.blockchain(.invalidResponse)
+        }
+
+        // Build the contract call
+        let network: Network
+        switch config.currentNetwork {
+        case .testnet:
+            network = .testnet
+        case .mainnet:
+            network = .public
+        }
+
+        // Use the actual source account keypair (must exist on network)
+        print("BlockchainService: Creating ClientOptions with contractId: '\(contractId)'")
+        let clientOptions = ClientOptions(
+            sourceAccountKeyPair: sourceKeyPair,
+            contractId: contractId,
+            network: network,
+            rpcUrl: config.rpcUrl
+        )
+        print("BlockchainService: ClientOptions created successfully")
+
+        // Convert public key Data to the format expected by contract
+        guard publicKey.count == 65 else {
+            throw AppError.validation("Invalid public key length: \(publicKey.count), expected 65")
+        }
+
+        let args: [SCValXDR] = [
+            SCValXDR.bytes(publicKey)
+        ]
+
+        let assembledOptions = AssembledTransactionOptions(
+            clientOptions: clientOptions,
+            methodOptions: MethodOptions(),
+            method: "token_id",
+            arguments: args
+        )
+
+        // Build the transaction using SDK's AssembledTransaction
+        // For read operations, we need to simulate to get the result
+        print("BlockchainService: Building transaction...")
+        print("BlockchainService: Method: token_id")
+        print("BlockchainService: Arguments count: \(args.count)")
+        let assembledTx: AssembledTransaction
+        do {
+            assembledTx = try await AssembledTransaction.build(options: assembledOptions)
+            print("BlockchainService: Transaction built successfully")
+        } catch {
+            // Check if it's a contract error (simulation errors can bubble up during build)
+            let errorString = "\(error)"
+            if let contractError = ContractError.fromErrorString(errorString) {
+                throw AppError.blockchain(.contract(contractError))
+            }
+
+            throw AppError.blockchain(.invalidResponse)
+        }
+
+        // For read operations, simulate to get the result
+        guard let rawTx = assembledTx.raw else {
+            print("BlockchainService: ERROR: No raw transaction")
+            throw AppError.blockchain(.invalidResponse)
+        }
+
+        // Simulate to get the return value
+        let simulateRequest = SimulateTransactionRequest(transaction: rawTx)
+        let simulateResponse = await self.rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
+
+        switch simulateResponse {
+        case .success(let simulateResult):
+            print("BlockchainService: Simulation successful")
+            guard let xdrString = simulateResult.results?.first?.xdr,
+                  let xdrData = Data(base64Encoded: xdrString),
+                  case .u64(let tokenId) = try? XDRDecoder.decode(SCValXDR.self, data: xdrData) else {
+                print("BlockchainService: No token ID found in response")
+                throw AppError.blockchain(.invalidResponse)
+            }
+
+            print("BlockchainService: Token ID retrieved: \(tokenId)")
+            return tokenId
+        case .failure(let error):
+            print("BlockchainService: Simulation failed: \(error)")
             print("BlockchainService: Error type: \(type(of: error))")
 
             // Check if it's a contract error
@@ -126,9 +241,9 @@ class BlockchainService {
             if let contractError = ContractError.fromErrorString(errorString) {
                 print("BlockchainService: Contract error detected: \(contractError)")
                 throw AppError.blockchain(.contract(contractError))
+            } else {
+                throw AppError.blockchain(.transactionRejected(errorString))
             }
-
-            throw AppError.blockchain(.invalidResponse)
         }
     }
 
@@ -153,8 +268,6 @@ class BlockchainService {
             print("BlockchainService: ERROR: Invalid contract ID format: \(contractId)")
             throw AppError.blockchain(.invalidResponse)
         }
-
-        let rpcClient = SorobanServer(endpoint: config.rpcUrl)
 
         // Build the contract call
         let network: Network
@@ -200,7 +313,12 @@ class BlockchainService {
             assembledTx = try await AssembledTransaction.build(options: assembledOptions)
             print("BlockchainService: Transaction built successfully")
         } catch {
-            print("BlockchainService: ERROR building transaction: \(error)")
+            // Check if it's a contract error (simulation errors can bubble up during build)
+            let errorString = "\(error)"
+            if let contractError = ContractError.fromErrorString(errorString) {
+                throw AppError.blockchain(.contract(contractError))
+            }
+
             throw AppError.blockchain(.invalidResponse)
         }
 
@@ -212,23 +330,49 @@ class BlockchainService {
 
         // Simulate to get the return value
         let simulateRequest = SimulateTransactionRequest(transaction: rawTx)
-        let simulateResponse = await rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
+        let simulateResponse = await self.rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
 
         switch simulateResponse {
         case .success(let simulateResult):
             print("BlockchainService: Simulation successful")
             guard let xdrString = simulateResult.results?.first?.xdr,
                   let xdrData = Data(base64Encoded: xdrString),
-                  let returnValue = try? XDRDecoder.decode(SCValXDR.self, data: xdrData),
-                  case .string(let uri) = returnValue else {
-                print("BlockchainService: No token URI found in response")
+                  let returnValue = try? XDRDecoder.decode(SCValXDR.self, data: xdrData) else {
+                print("BlockchainService: ERROR - Could not decode SCValXDR from response")
                 throw AppError.blockchain(.invalidResponse)
             }
-            // Trim null bytes from the end of the URI
-            let trimmedUri = uri.trimmingCharacters(in: .controlCharacters).trimmingCharacters(in: CharacterSet(charactersIn: "\0"))
-            print("BlockchainService: Token URI retrieved: \(trimmedUri)")
 
-            return trimmedUri
+            print("BlockchainService: Raw return value type: \(returnValue)")
+
+            let uri: String
+            switch returnValue {
+            case .string(let stringValue):
+                uri = stringValue
+                print("BlockchainService: Token URI is string: \(uri)")
+            case .bytes(let bytesValue):
+                // Try to interpret bytes as UTF-8 string
+                if let stringFromBytes = String(data: Data(bytesValue), encoding: .utf8) {
+                    uri = stringFromBytes
+                    print("BlockchainService: Token URI decoded from bytes: \(uri)")
+                } else {
+                    print("BlockchainService: ERROR - Token URI bytes cannot be decoded as UTF-8")
+                    throw AppError.blockchain(.invalidResponse)
+                }
+            default:
+                print("BlockchainService: ERROR - Token URI has unexpected type: \(returnValue)")
+                throw AppError.blockchain(.invalidResponse)
+            }
+
+            // Clean up the URI - remove quotes and null bytes
+            var cleanedUri = uri.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+
+            // Remove trailing null bytes that contracts sometimes append
+            cleanedUri = cleanedUri.trimmingCharacters(in: CharacterSet(charactersIn: "\0"))
+
+            print("BlockchainService: Token URI retrieved: \(cleanedUri)")
+            print("BlockchainService: Original raw URI: \(uri.debugDescription)")
+
+            return cleanedUri
         case .failure(let error):
             print("BlockchainService: Simulation failed: \(error)")
             print("BlockchainService: Error type: \(type(of: error))")
@@ -325,7 +469,7 @@ class BlockchainService {
         
         // Simulate to get the return value
         let simulateRequest = SimulateTransactionRequest(transaction: rawTx)
-        let simulateResponse = await rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
+        let simulateResponse = await self.rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
         
         switch simulateResponse {
         case .success(let simulateResult):
@@ -529,7 +673,7 @@ class BlockchainService {
             var tokenId: UInt64 = 0
             if let rawTx = assembledTx.raw {
                 let simulateRequest = SimulateTransactionRequest(transaction: rawTx)
-                let simulateResponse = await rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
+                let simulateResponse = await self.rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
 
                 if case .success(let simulateResult) = simulateResponse,
                    let xdrString = simulateResult.results?.first?.xdr,
@@ -774,7 +918,7 @@ class BlockchainService {
             let rpcClient = SorobanServer(endpoint: config.rpcUrl)
             if let rawTx = assembledTx.raw {
                 let simulateRequest = SimulateTransactionRequest(transaction: rawTx)
-                let simulateResponse = await rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
+                let simulateResponse = await self.rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
 
                 if case .success(let simulateResult) = simulateResponse,
                    let xdrString = simulateResult.results?.first?.xdr,
@@ -859,7 +1003,7 @@ class BlockchainService {
         let rpcClient = SorobanServer(endpoint: config.rpcUrl)
         print("BlockchainService: Sending transaction to RPC...")
         progressCallback?("Sending transaction to network...")
-        let sentTxResponse = await rpcClient.sendTransaction(transaction: transaction)
+        let sentTxResponse = await self.rpcClient.sendTransaction(transaction: transaction)
         
         let sentTx: SendTransactionResponse
         switch sentTxResponse {
@@ -948,7 +1092,7 @@ class BlockchainService {
             progressCallback?("Checking transaction status... (\(attempts + 1)/\(maxAttempts))")
             try await Task.sleep(nanoseconds: delayNanoseconds)
             
-            let txResponseEnum = await rpcClient.getTransaction(transactionHash: hashString)
+            let txResponseEnum = await self.rpcClient.getTransaction(transactionHash: hashString)
             
             switch txResponseEnum {
             case .success(let txResponse):

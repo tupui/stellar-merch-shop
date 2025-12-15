@@ -56,3 +56,12 @@ contract_deploy:  ## Deploy Soroban contract to testnet
   		--uri ipfs://QmWXJXRdExse2YHRY21Wvh4pjRxNRQcWVhcKw4DLVnqGqs \
   		> .config/stellar/stellar_merch_shop_$(network)_id && \
   	cat .config/stellar/stellar_merch_shop_$(network)_id
+
+contract_uri:
+	stellar contract invoke \
+		--source-account me \
+		--network $(network) \
+		--id $(shell cat .config/stellar/stellar_merch_shop_$(network)_id) \
+		-- \
+		token_uri \
+		--token_id 1

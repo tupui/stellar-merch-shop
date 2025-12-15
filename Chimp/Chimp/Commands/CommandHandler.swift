@@ -44,8 +44,12 @@ class CommandHandler{
     ///   - command: Command APDU to be transmitted
     ///   - on_response_event: Response event handler that contains the response APDU
     func Transmit(command: APDUCommand, on_response_event: @escaping (APDUResponse) -> Void) {
-        let command_apdu = NFCISO7816APDU(data: command.command)
-        self.tag.sendCommand(apdu: command_apdu!) { (response: Data, sw1: UInt8, sw2: UInt8, error: Error?)
+        guard let command_apdu = NFCISO7816APDU(data: command.command) else {
+            print("CommandHandler: Failed to create APDU from command data")
+            on_response_event(APDUResponse(sw1: 0x6F, sw2: 0x00, data: nil)) // General error
+            return
+        }
+        self.tag.sendCommand(apdu: command_apdu) { (response: Data, sw1: UInt8, sw2: UInt8, error: Error?)
             in
             on_response_event(APDUResponse(sw1: sw1, sw2: sw2, data: response))
         }

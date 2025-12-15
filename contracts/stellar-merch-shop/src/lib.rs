@@ -61,26 +61,6 @@ pub trait NFCtoNFTContract {
     /// The u64 token_id (SEP-50 compliant) if signature is valid.
     fn claim(e: &Env, claimant: Address, message: Bytes, signature: BytesN<64>, recovery_id: u32, public_key: BytesN<65>, nonce: u32) -> u64;
 
-    /// Returns the number of tokens in `owner`'s account.
-    ///
-    /// # Arguments
-    ///
-    /// * `e` - Access to the Soroban environment.
-    /// * `owner` - Account of the token's owner.
-    fn balance(e: &Env, owner: Address) -> u32;
-
-    /// Returns the address of the owner of the given `token_id`.
-    ///
-    /// # Arguments
-    ///
-    /// * `e` - Access to the Soroban environment.
-    /// * `token_id` - Token id as a number.
-    ///
-    /// # Notes
-    ///
-    /// If the token does not exist, this function is expected to panic.
-    fn owner_of(e: &Env, token_id: u64) -> Address;
-
     /// Transfers `token_id` token from `from` to `to` using NFC chip signature.
     ///
     /// This function verifies that the provided signature was created by an Infineon
@@ -108,6 +88,38 @@ pub trait NFCtoNFTContract {
     /// * data - `[token_id: BytesN<65>]`
     fn transfer(e: &Env, from: Address, to: Address, token_id: u64, message: Bytes, signature: BytesN<64>, recovery_id: u32, public_key: BytesN<65>, nonce: u32);
 
+    /// Returns the current nonce for the given `public_key`.
+    ///
+    /// # Arguments
+    ///
+    /// * `e` - Access to the Soroban environment.
+    /// * `public_key` - The chip's public key (uncompressed SEC1 format, 65 bytes).
+    ///
+    /// # Returns
+    ///
+    /// The current nonce for this chip's public_key (defaults to 0 if not set).
+    fn get_nonce(e: &Env, public_key: BytesN<65>) -> u32;
+
+    /// Returns the number of tokens in `owner`'s account.
+    ///
+    /// # Arguments
+    ///
+    /// * `e` - Access to the Soroban environment.
+    /// * `owner` - Account of the token's owner.
+    fn balance(e: &Env, owner: Address) -> u32;
+
+    /// Returns the address of the owner of the given `token_id`.
+    ///
+    /// # Arguments
+    ///
+    /// * `e` - Access to the Soroban environment.
+    /// * `token_id` - Token id as a number.
+    ///
+    /// # Notes
+    ///
+    /// If the token does not exist, this function is expected to panic.
+    fn owner_of(e: &Env, token_id: u64) -> Address;
+
     /// Returns the token collection name.
     ///
     /// # Arguments
@@ -134,7 +146,7 @@ pub trait NFCtoNFTContract {
     /// If the token does not exist, this function is expected to panic.
     fn token_uri(e: &Env, token_id: u64) -> String;
 
-    /// Returns the current nonce for the given `public_key`.
+    /// Returns the token ID for the given chip public key.
     ///
     /// # Arguments
     ///
@@ -143,6 +155,22 @@ pub trait NFCtoNFTContract {
     ///
     /// # Returns
     ///
-    /// The current nonce for this chip's public_key (defaults to 0 if not set).
-    fn get_nonce(e: &Env, public_key: BytesN<65>) -> u32;
+    /// The token ID associated with this public key, or panics if not found.
+    fn token_id(e: &Env, public_key: BytesN<65>) -> u64;
+
+    /// Returns the chip public key for the given token ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `e` - Access to the Soroban environment.
+    /// * `token_id` - Token id as a number.
+    ///
+    /// # Returns
+    ///
+    /// The chip's public key associated with this token ID.
+    ///
+    /// # Notes
+    ///
+    /// If the token does not exist, this function is expected to panic.
+    fn public_key(e: &Env, token_id: u64) -> BytesN<65>;
 }

@@ -48,12 +48,7 @@ impl NFCtoNFTContract for StellarMerchShop {
         verify_chip_signature(e, message, signature, recovery_id, public_key.clone(), nonce);
 
         let public_key_lookup = NFTStorageKey::TokenIdByPublicKey(public_key.clone());
-        if e
-            .storage()
-            .persistent()
-            .get::<NFTStorageKey, u64>(&public_key_lookup)
-            .is_some()
-        {
+        if e.storage().persistent().has(&public_key_lookup) {
             panic_with_error!(&e, &errors::NonFungibleTokenError::TokenAlreadyMinted);
         }
 
@@ -81,19 +76,6 @@ impl NFCtoNFTContract for StellarMerchShop {
         token_id
     }
 
-    fn balance(e: &Env, owner: Address) -> u32 {
-        e.storage()
-            .persistent()
-            .get(&NFTStorageKey::Balance(owner))
-            .unwrap_or(0u32)
-    }
-
-    fn owner_of(e: &Env, token_id: u64) -> Address {
-        e.storage().persistent()
-        .get(&NFTStorageKey::Owner(token_id))
-        .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::NonExistentToken))
-    }
-
     fn claim(
         e: &Env,
         claimant: Address,
@@ -106,12 +88,7 @@ impl NFCtoNFTContract for StellarMerchShop {
         verify_chip_signature(e, message, signature, recovery_id, public_key.clone(), nonce);
 
         // Look up token_id from public_key
-        let public_key_lookup = NFTStorageKey::TokenIdByPublicKey(public_key.clone());
-        let token_id: u64 = e
-            .storage()
-            .persistent()
-            .get::<NFTStorageKey, u64>(&public_key_lookup)
-            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::NonExistentToken));
+        let token_id = Self::token_id(e, public_key.clone());
 
         // Verify token is not already claimed
         if e.storage().persistent().has(&NFTStorageKey::Owner(token_id)) {
@@ -144,10 +121,7 @@ impl NFCtoNFTContract for StellarMerchShop {
         verify_chip_signature(e, message, signature, recovery_id, public_key.clone(), nonce);
 
         // Verify the chip public_key corresponds to that specific token_id
-        let token_id_public_key: BytesN<65> = e.storage()
-            .persistent()
-            .get(&NFTStorageKey::PublicKey(token_id))
-            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::NonExistentToken));
+        let token_id_public_key: BytesN<65> = Self::public_key(e, token_id);
 
         if token_id_public_key != public_key {
             panic_with_error!(&e, &errors::NonFungibleTokenError::InvalidSignature);
@@ -176,6 +150,23 @@ impl NFCtoNFTContract for StellarMerchShop {
             .unwrap_or(0u32)  // Default to 0 if not set (first use)
     }
 
+    fn balance(e: &Env, owner: Address) -> u32 {
+        e.storage()
+            .persistent()
+            .get(&NFTStorageKey::Balance(owner))
+            .unwrap_or(0u32)
+    }
+
+    fn owner_of(e: &Env, token_id: u64) -> Address {
+        // Verify the token exists (this will panic if it doesn't)
+        Self::public_key(e, token_id);
+
+        // Token exists, now check if it has an owner
+        e.storage().persistent()
+        .get(&NFTStorageKey::Owner(token_id))
+        .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::TokenNotClaimed))
+    }
+
     fn name(e: &Env) -> String {
             e.storage()
             .instance()
@@ -191,11 +182,8 @@ impl NFCtoNFTContract for StellarMerchShop {
     }
 
     fn token_uri(e: &Env, token_id: u64) -> String {
-        // Verify token exists by checking if public_key is stored (works for both claimed and unclaimed tokens)
-        let _public_key: BytesN<65> = e.storage()
-            .persistent()
-            .get(&NFTStorageKey::PublicKey(token_id))
-            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::NonExistentToken));
+        // Verify token exists (this will panic if it doesn't)
+        Self::public_key(e, token_id);
 
         let base_uri: String = e
             .storage()
@@ -212,6 +200,20 @@ impl NFCtoNFTContract for StellarMerchShop {
         String::from(uri_bytes)
     }
 
+    fn token_id(e: &Env, public_key: BytesN<65>) -> u64 {
+        let public_key_lookup = NFTStorageKey::TokenIdByPublicKey(public_key);
+        e.storage()
+            .persistent()
+            .get::<NFTStorageKey, u64>(&public_key_lookup)
+            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::NonExistentToken))
+    }
+
+    fn public_key(e: &Env, token_id: u64) -> BytesN<65> {
+        e.storage()
+            .persistent()
+            .get(&NFTStorageKey::PublicKey(token_id))
+            .unwrap_or_else(|| panic_with_error!(e, errors::NonFungibleTokenError::NonExistentToken))
+    }
 }
 
 /// Convert an u64 to its decimal string representation as Bytes

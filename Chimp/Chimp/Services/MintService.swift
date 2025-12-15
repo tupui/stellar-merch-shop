@@ -214,6 +214,16 @@ class MintService {
             throw AppError.blockchain(.networkError("Failed to submit transaction: \(error.localizedDescription)"))
         }
 
+        // Step 12: Update NDEF data on chip with token ID
+        progressCallback?("Updating chip data...")
+        do {
+            try await updateNDEFOnChip(tag: tag, session: session, tokenId: tokenId)
+            print("MintService: NDEF data updated successfully on chip")
+        } catch {
+            print("MintService: WARNING - Failed to update NDEF data on chip: \(error)")
+            // Don't fail the mint operation if NDEF update fails - the token was successfully minted
+        }
+
         return MintResult(transactionHash: txHash, tokenId: tokenId)
     }
 
@@ -261,6 +271,123 @@ class MintService {
                 }
             }
         }
+    }
+
+    // MARK: - NDEF Operations
+
+    /// NDEF Application ID
+    private let NDEF_AID: [UInt8] = [0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01]
+
+    /// NDEF File ID
+    private let NDEF_FILE_ID: [UInt8] = [0xE1, 0x04]
+
+    /// Update NDEF data on chip with token ID
+    private func updateNDEFOnChip(tag: NFCISO7816Tag, session: NFCTagReaderSession, tokenId: UInt64) async throws {
+        print("MintService: Updating NDEF data on chip with token ID: \(tokenId)")
+
+        // Construct new NDEF URL with token ID
+        let contractId = config.contractId
+        let newUrl = "https://nft.stellarmerchshop.com/\(contractId)/\(tokenId)"
+        print("MintService: New NDEF URL: \(newUrl)")
+
+        // Convert URL to NDEF record bytes
+        guard let ndefBytes = createNDEFRecord(for: newUrl) else {
+            throw AppError.nfc(.readWriteFailed("Failed to create NDEF record"))
+        }
+
+        do {
+            // Step 1: Select NDEF Application
+            guard let selectAppAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x04, 0x00] + [UInt8(NDEF_AID.count)] + NDEF_AID + [0x00])) else {
+                throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF Application APDU"))
+            }
+            let (_, selectAppSW1, selectAppSW2) = try await tag.sendCommand(apdu: selectAppAPDU)
+
+            guard selectAppSW1 == 0x90 && selectAppSW2 == 0x00 else {
+                throw AppError.nfc(.readWriteFailed("Failed to select NDEF application: \(selectAppSW1) \(selectAppSW2)"))
+            }
+            print("MintService: NDEF Application selected")
+
+            // Step 2: Select NDEF File
+            guard let selectFileAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x00, 0x0C, 0x02] + NDEF_FILE_ID)) else {
+                throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF File APDU"))
+            }
+            let (_, selectFileSW1, selectFileSW2) = try await tag.sendCommand(apdu: selectFileAPDU)
+
+            guard selectFileSW1 == 0x90 && selectFileSW2 == 0x00 else {
+                throw AppError.nfc(.readWriteFailed("Failed to select NDEF file: \(selectFileSW1) \(selectFileSW2)"))
+            }
+            print("MintService: NDEF File selected")
+
+            // Step 3: Write NLEN (NDEF message length)
+            let nlen = UInt16(ndefBytes.count)
+            let nlenBytes = [UInt8((nlen >> 8) & 0xFF), UInt8(nlen & 0xFF)]
+            guard let writeNlenAPDU = NFCISO7816APDU(data: Data([0x00, 0xD6, 0x00, 0x00, 0x02] + nlenBytes)) else {
+                throw AppError.nfc(.readWriteFailed("Failed to create WRITE NLEN APDU"))
+            }
+            let (_, writeNlenSW1, writeNlenSW2) = try await tag.sendCommand(apdu: writeNlenAPDU)
+
+            guard writeNlenSW1 == 0x90 && writeNlenSW2 == 0x00 else {
+                throw AppError.nfc(.readWriteFailed("Failed to write NLEN: \(writeNlenSW1) \(writeNlenSW2)"))
+            }
+            print("MintService: NLEN written: \(nlen)")
+
+            // Step 4: Write NDEF data (starting from offset 2)
+            var currentOffset: UInt16 = 2
+            let maxWriteLength: UInt8 = 255 - 2
+
+            for chunkStart in stride(from: 0, to: ndefBytes.count, by: Int(maxWriteLength)) {
+                let chunkEnd = min(chunkStart + Int(maxWriteLength), ndefBytes.count)
+                let chunk = ndefBytes[chunkStart..<chunkEnd]
+
+                guard let updateBinaryAPDU = NFCISO7816APDU(data: Data([
+                    0x00, 0xD6,
+                    UInt8((currentOffset >> 8) & 0xFF),
+                    UInt8(currentOffset & 0xFF),
+                    UInt8(chunk.count)
+                ] + Array(chunk))) else {
+                    throw AppError.nfc(.readWriteFailed("Failed to create UPDATE BINARY APDU"))
+                }
+
+                let (_, writeSW1, writeSW2) = try await tag.sendCommand(apdu: updateBinaryAPDU)
+
+                guard writeSW1 == 0x90 && writeSW2 == 0x00 else {
+                    throw AppError.nfc(.readWriteFailed("Failed to write NDEF chunk at offset \(currentOffset): \(writeSW1) \(writeSW2)"))
+                }
+
+                currentOffset += UInt16(chunk.count)
+            }
+
+            print("MintService: NDEF data written successfully")
+        } catch {
+            print("MintService: Error updating NDEF: \(error)")
+            throw error
+        }
+    }
+
+    /// Create NDEF URI record from URL string
+    private func createNDEFRecord(for url: String) -> Data? {
+        guard let urlData = url.data(using: .utf8) else { return nil }
+
+        // NDEF URI record format:
+        // 0xD1 (MB=1, ME=1, CF=0, SR=1, IL=0, TNF=1) - URI record
+        // 0x01 (Type length = 1)
+        // Payload length (1 byte since SR=1)
+        // 0x55 (Type = 'U' for URI)
+        // Identifier code (0x00 = no prefix)
+        // URI data
+
+        let payloadLength = 1 + urlData.count // identifier code + url
+        let recordLength = 1 + 1 + 1 + 1 + payloadLength // header + type length + payload length + type + payload
+
+        var record = Data()
+        record.append(0xD1) // TNF=URI, SR=1, ME=1, MB=1
+        record.append(0x01) // Type length
+        record.append(UInt8(payloadLength)) // Payload length
+        record.append(0x55) // Type 'U'
+        record.append(0x00) // No URI prefix
+        record.append(urlData)
+
+        return record
     }
 }
 

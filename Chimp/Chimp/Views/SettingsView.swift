@@ -16,13 +16,12 @@ class SettingsView: UIViewController {
     var logoutButton: UIButton!
     var statusLabel: UILabel!
     
-    var walletService: WalletService!
+    private let walletService = WalletService()
     var onLogout: (() -> Void)?
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        walletService = WalletService()
+
         configureViews()
         loadCurrentSettings()
     }

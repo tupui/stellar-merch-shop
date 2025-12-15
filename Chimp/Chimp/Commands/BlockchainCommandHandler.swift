@@ -128,22 +128,23 @@ class BlockchainCommandHandler: CommandHandler {
     private func OnGenerateNewSecp256K1KeypairCompleted(response: APDUResponse) {
         if(response.IsSuccessSW()) {
             // Response data contains the generated key index
-            if(response.data?.count != 1) {
+            guard let responseData = response.data, responseData.count == 1 else {
                  print(TAG + ": GENERATE_KEY invalid response - Doesnt have generated key index")
                 OnActionCompleted?(false, nil, "Invalid GENERATE_KEY response", reader_session)
-            } else{
-                print(TAG + ": Response: GENERATE_KEY Success")
-                
-                // Newly genrated key's index
-                let new_key_index = response.data![0]
-                if(new_key_index < key_index) {
-                    print(TAG + ": Required key index not generated yet. Generating keypair again.")
-                    GenerateNewSecp256K1Keypair()
-                }
-                else {
-                    print(TAG + ": Required key index is generated. Reading the public-key.")
-                    GetKeyInfo()
-                }
+                return
+            }
+
+            print(TAG + ": Response: GENERATE_KEY Success")
+
+            // Newly generated key's index
+            let new_key_index = responseData[0]
+            if(new_key_index < key_index) {
+                print(TAG + ": Required key index not generated yet. Generating keypair again.")
+                GenerateNewSecp256K1Keypair()
+            }
+            else {
+                print(TAG + ": Required key index is generated. Reading the public-key.")
+                GetKeyInfo()
             }
         } else {
             print(TAG + ": Response: GENERATE_KEY Failed: " + response.GetSWHex())
@@ -210,9 +211,17 @@ class BlockchainCommandHandler: CommandHandler {
         command.append(key_index)  // P1 (key index)
         command.append(0x00)  // P2
         command.append(0x20)  // Lc (32 bytes)
-        command.append(message_digest!)  // Message digest (32 bytes)
+
+        if let digest = message_digest {
+            command.append(digest)  // Message digest (32 bytes)
+        } else {
+            print(TAG + ": ERROR - message_digest is nil in GenerateSignatureCommand")
+            // Append zeros as fallback
+            command.append(Data(repeating: 0, count: 32))
+        }
+
         command.append(0x00)  // Le
-        
+
         return command
     }
     
