@@ -25,7 +25,7 @@ export interface UseOperationStepsReturn<Step extends string> {
  */
 export function useOperationSteps<Step extends string>(
   steps: Step[],
-  stepDefinitions: Record<Step, StepDefinition>
+  stepDefinitions: Record<Step, StepDefinition>,
 ): UseOperationStepsReturn<Step> {
   const [currentStep, setCurrentStepState] = useState<Step | null>(null);
 
@@ -37,17 +37,26 @@ export function useOperationSteps<Step extends string>(
     setCurrentStepState(null);
   }, []);
 
-  const getStepMessage = useCallback((step: Step): string => {
-    return stepDefinitions[step]?.message || "Processing...";
-  }, [stepDefinitions]);
+  const getStepMessage = useCallback(
+    (step: Step): string => {
+      return stepDefinitions[step]?.message || "Processing...";
+    },
+    [stepDefinitions],
+  );
 
-  const isChipOperation = useCallback((step: Step): boolean => {
-    return stepDefinitions[step]?.category === "chip";
-  }, [stepDefinitions]);
+  const isChipOperation = useCallback(
+    (step: Step): boolean => {
+      return stepDefinitions[step]?.category === "chip";
+    },
+    [stepDefinitions],
+  );
 
-  const isBlockchainOperation = useCallback((step: Step): boolean => {
-    return stepDefinitions[step]?.category === "blockchain";
-  }, [stepDefinitions]);
+  const isBlockchainOperation = useCallback(
+    (step: Step): boolean => {
+      return stepDefinitions[step]?.category === "blockchain";
+    },
+    [stepDefinitions],
+  );
 
   const getProgress = useCallback(() => {
     if (!currentStep) {

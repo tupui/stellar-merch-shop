@@ -40,7 +40,10 @@ interface MintResult {
   error?: string;
 }
 
-const MINT_STEP_DEFINITIONS: Record<MintStep, { message: string; category: "chip" | "blockchain" | "other" }> = {
+const MINT_STEP_DEFINITIONS: Record<
+  MintStep,
+  { message: string; category: "chip" | "blockchain" | "other" }
+> = {
   reading: { message: "Reading chip public key...", category: "chip" },
   signing: { message: "Waiting for chip signature...", category: "chip" },
   recovering: { message: "Determining recovery ID...", category: "chip" },
@@ -60,8 +63,12 @@ const MINT_STEPS: MintStep[] = [
   "writing-ndef",
 ];
 
-const CHIP_STEPS = MINT_STEPS.filter(step => MINT_STEP_DEFINITIONS[step].category === "chip");
-const BLOCKCHAIN_STEPS = MINT_STEPS.filter(step => MINT_STEP_DEFINITIONS[step].category === "blockchain");
+const CHIP_STEPS = MINT_STEPS.filter(
+  (step) => MINT_STEP_DEFINITIONS[step].category === "chip",
+);
+const BLOCKCHAIN_STEPS = MINT_STEPS.filter(
+  (step) => MINT_STEP_DEFINITIONS[step].category === "blockchain",
+);
 
 export const MintSection = ({ keyId, contractId }: MintSectionProps) => {
   const {

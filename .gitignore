@@ -42,3 +42,4 @@ src/contracts/*
 .idea
 .cursor
 .build
+nfc-server/scripts

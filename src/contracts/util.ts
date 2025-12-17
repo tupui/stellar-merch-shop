@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { WalletNetwork } from "@creit.tech/stellar-wallets-kit";
 
-type NetworkType = "local" | "testnet" | "pubnet" | "futurenet" | "mainnet" | "custom";
+type NetworkType =
+  | "local"
+  | "testnet"
+  | "pubnet"
+  | "futurenet"
+  | "mainnet"
+  | "custom";
 type Network = {
   id: NetworkType;
   label: string;

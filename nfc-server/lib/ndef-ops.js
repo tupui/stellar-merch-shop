@@ -516,4 +516,3 @@ export class NDEFOperations {
     throw lastError;
   }
 }
-

@@ -1,4 +1,10 @@
-export type NetworkType = "local" | "testnet" | "pubnet" | "futurenet" | "mainnet" | "custom";
+export type NetworkType =
+  | "local"
+  | "testnet"
+  | "pubnet"
+  | "futurenet"
+  | "mainnet"
+  | "custom";
 
 export type Network = {
   id: NetworkType;

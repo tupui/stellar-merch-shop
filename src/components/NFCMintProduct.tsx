@@ -70,9 +70,10 @@ export const NFCMintProduct = () => {
     } catch (err) {
       setNdefData(null);
 
-      const errorMessage = err instanceof ChipNotPresentError
-        ? "No NFC chip detected. Please place the chip on the reader."
-        : `Failed to read NDEF: ${err instanceof Error ? err.message : "Unknown error"}`;
+      const errorMessage =
+        err instanceof ChipNotPresentError
+          ? "No NFC chip detected. Please place the chip on the reader."
+          : `Failed to read NDEF: ${err instanceof Error ? err.message : "Unknown error"}`;
 
       addNotification(errorMessage, "error");
     }
@@ -98,9 +99,7 @@ export const NFCMintProduct = () => {
       />
 
       {/* Key Management Section */}
-      <KeyManagementSection
-        keyId={parseKeyId(selectedKeyId)}
-      />
+      <KeyManagementSection keyId={parseKeyId(selectedKeyId)} />
 
       {/* NDEF Operations Section */}
       <NDEFOperationsSection

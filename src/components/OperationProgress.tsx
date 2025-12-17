@@ -29,9 +29,10 @@ export const OperationProgress = ({
     return stepIndex <= currentIndex;
   };
 
-  const colors = type === "chip"
-    ? { background: "#f5f5f5", active: "#4caf50", text: "#333" }
-    : { background: "#e3f2fd", active: "#1976d2", text: "#1976d2" };
+  const colors =
+    type === "chip"
+      ? { background: "#f5f5f5", active: "#4caf50", text: "#333" }
+      : { background: "#e3f2fd", active: "#1976d2", text: "#1976d2" };
 
   return (
     <Box
@@ -43,12 +44,7 @@ export const OperationProgress = ({
         borderRadius: "4px",
       }}
     >
-      <Text
-        as="p"
-        size="sm"
-        weight="semi-bold"
-        style={{ color: colors.text }}
-      >
+      <Text as="p" size="sm" weight="semi-bold" style={{ color: colors.text }}>
         {stepMessage}
       </Text>
       <Box gap="xs" direction="row" style={{ marginTop: "4px" }}>

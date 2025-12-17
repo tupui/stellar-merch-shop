@@ -6,6 +6,10 @@ ifndef network
    override network = testnet
 endif
 
+ifndef admin
+   override admin = me
+endif
+
 ifndef wasm
 override wasm = target/wasm32v1-none/release/stellar_merch_shop.wasm
 endif
@@ -25,6 +29,9 @@ install:  ## install Rust and Soroban-CLI
 	rustup target add wasm32v1-none && \
 	cargo install --locked stellar-cli
 
+funds:
+	stellar keys fund $(admin) --network $(network)
+
 # --------- CONTRACT BUILD/TEST/DEPLOY --------- #
 
 contract_build:
@@ -41,9 +48,12 @@ contract_bindings: contract_build  ## Create bindings
 		--output-dir packages/stellar_merch_shop \
 		--overwrite && \
 	cd packages/stellar_merch_shop && \
+	bun install --latest && \
 	bun run build && \
 	cd ../.. && \
 	bun format
+
+# --salt $(shell printf cmp1 | openssl sha256 | cut -d " " -f2) \
 
 contract_deploy:  ## Deploy Soroban contract to testnet
 	stellar contract deploy \
