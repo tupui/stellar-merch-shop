@@ -4,7 +4,8 @@ import SwiftUI
 struct ChimpApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainView()
+                .preferredColorScheme(.light) // Force light mode for brand consistency
         }
     }
 }

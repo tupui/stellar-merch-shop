@@ -1,104 +1,118 @@
-//
-//  LoginView.swift
-//  Chimp
-//
-//  Login view for entering private key
-//
+import SwiftUI
 
-import UIKit
-
-class LoginView: UIViewController {
-    let TAG: String = "LoginView"
+struct LoginView: View {
+    @ObservedObject var walletState: WalletState
+    @State private var secretKey: String = ""
+    @State private var isSecure: Bool = true
+    @State private var isLoading: Bool = false
+    @State private var errorMessage: String?
     
-    var privateKeyTextField: UITextField!
-    var loginButton: UIButton!
-    var errorLabel: UILabel!
     private let walletService = WalletService()
 
-    var onLoginSuccess: (() -> Void)?
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-
-        configureViews()
-    }
-    
-    func configureViews() {
-        view.backgroundColor = .systemBackground
-        title = "Login"
-        
-        // Private key text field
-        let textField = UITextField()
-        textField.placeholder = "Enter your Stellar secret key (S...)"
-        textField.borderStyle = .roundedRect
-        textField.isSecureTextEntry = true
-        textField.autocorrectionType = .no
-        textField.autocapitalizationType = .none
-        textField.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(textField)
-        privateKeyTextField = textField
-        
-        // Login button
-        let button = UIButton(type: .system)
-        button.setTitle("Login", for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
-        button.backgroundColor = .systemBlue
-        button.setTitleColor(.white, for: .normal)
-        button.layer.cornerRadius = 10
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.addTarget(self, action: #selector(loginButtonTapped), for: .touchUpInside)
-        view.addSubview(button)
-        loginButton = button
-        
-        // Error label
-        let label = UILabel()
-        label.text = ""
-        label.textColor = .systemRed
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.font = .systemFont(ofSize: 14, weight: .regular)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
-        errorLabel = label
-        
-        // Layout constraints
-        NSLayoutConstraint.activate([
-            textField.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            textField.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -100),
-            textField.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            textField.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            textField.heightAnchor.constraint(equalToConstant: 44),
-            
-            button.topAnchor.constraint(equalTo: textField.bottomAnchor, constant: 20),
-            button.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            button.widthAnchor.constraint(equalToConstant: 200),
-            button.heightAnchor.constraint(equalToConstant: 50),
-            
-            label.topAnchor.constraint(equalTo: button.bottomAnchor, constant: 20),
-            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20)
-        ])
-    }
-    
-    @objc func loginButtonTapped() {
-        guard let secretKey = privateKeyTextField.text, !secretKey.isEmpty else {
-            errorLabel.text = "Please enter your secret key"
-            return
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color.chimpBackground
+                    .ignoresSafeArea()
+                
+                VStack(spacing: 24) {
+                    Spacer()
+                    
+                    // Logo/Icon
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 80))
+                        .foregroundColor(.chimpYellow)
+                        .padding(.bottom, 20)
+                    
+                    // Title
+                    Text("Welcome to Chimp")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                    
+                    Text("Connect your Stellar wallet")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 40)
+                    
+                    // Secret Key Input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Secret Key")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        
+                        HStack {
+                            if isSecure {
+                                SecureField("Enter your Stellar secret key (S...)", text: $secretKey)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .autocapitalization(.none)
+                                    .disableAutocorrection(true)
+                            } else {
+                                TextField("Enter your Stellar secret key (S...)", text: $secretKey)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .autocapitalization(.none)
+                                    .disableAutocorrection(true)
+                            }
+                            
+                            Button(action: { isSecure.toggle() }) {
+                                Image(systemName: isSecure ? "eye.slash.fill" : "eye.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    
+                    // Error Message
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 20)
+                    }
+                    
+                    // Login Button
+                    Button(action: login) {
+                        HStack {
+                            if isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
+                                Text("Login")
+                                    .font(.system(size: 18, weight: .semibold))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.chimpYellow)
+                        .foregroundColor(.black)
+                        .cornerRadius(12)
+                    }
+                    .disabled(isLoading || secretKey.isEmpty)
+                    .padding(.horizontal, 20)
+                    
+                    Spacer()
+                }
+            }
+            .navigationBarHidden(true)
         }
+    }
+    
+    private func login() {
+        guard !secretKey.isEmpty else { return }
         
-        loginButton.isEnabled = false
-        errorLabel.text = ""
+        isLoading = true
+        errorMessage = nil
         
         Task {
             do {
-                let _ = try await walletService.loadWalletFromSecretKey(secretKey)
+                _ = try await walletService.loadWalletFromSecretKey(secretKey)
                 await MainActor.run {
-                    self.onLoginSuccess?()
+                    isLoading = false
+                    walletState.checkWalletState()
                 }
             } catch {
                 await MainActor.run {
-                    self.errorLabel.text = error.localizedDescription
-                    self.loginButton.isEnabled = true
+                    isLoading = false
+                    errorMessage = error.localizedDescription
                 }
             }
         }

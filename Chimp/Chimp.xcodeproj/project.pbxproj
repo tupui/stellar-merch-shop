@@ -274,6 +274,7 @@
 		276DCE052EEB0065009A1DA5 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ADMIN_MODE = true;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Chimp/Chimp.entitlements;
@@ -311,6 +312,7 @@
 		276DCE062EEB0065009A1DA5 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ADMIN_MODE = true;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Chimp/Chimp.entitlements;

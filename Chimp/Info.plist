@@ -63,5 +63,7 @@
 	<string>$(STELLAR_CONTRACT_ID_TESTNET)</string>
 	<key>STELLAR_CONTRACT_ID_MAINNET</key>
 	<string>$(STELLAR_CONTRACT_ID_MAINNET)</string>
+	<key>ADMIN_MODE</key>
+	<string>$(ADMIN_MODE)</string>
 </dict>
 </plist>

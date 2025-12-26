@@ -16,11 +16,13 @@ class AppConfig {
     
     private let networkKey = "app_network" // UserDefaults key for runtime override
     private let contractIdKey = "app_contract_id" // UserDefaults key for runtime override
+    private let adminModeKey = "app_admin_mode" // UserDefaults key for runtime override
     
     // Build configuration keys (set in Info.plist via build settings)
     private let buildNetworkKey = "STELLAR_NETWORK"
     private let buildContractIdTestnetKey = "STELLAR_CONTRACT_ID_TESTNET"
     private let buildContractIdMainnetKey = "STELLAR_CONTRACT_ID_MAINNET"
+    private let buildAdminModeKey = "ADMIN_MODE"
     
     private init() {}
     
@@ -145,5 +147,28 @@ class AppConfig {
             return network
         }
         return nil
+    }
+    
+    /// Admin mode flag - set via build configuration
+    /// First checks UserDefaults (runtime override), then build configuration
+    var isAdminMode: Bool {
+        get {
+            // Check for runtime override in UserDefaults
+            if UserDefaults.standard.object(forKey: adminModeKey) != nil {
+                return UserDefaults.standard.bool(forKey: adminModeKey)
+            }
+            
+            // Fall back to build configuration
+            if let buildAdminMode = Bundle.main.infoDictionary?[buildAdminModeKey] as? String {
+                let lowercased = buildAdminMode.lowercased()
+                return lowercased == "true" || lowercased == "1" || lowercased == "yes"
+            }
+            
+            return false // Default to regular user mode
+        }
+        set {
+            // Store in UserDefaults for runtime override
+            UserDefaults.standard.set(newValue, forKey: adminModeKey)
+        }
     }
 }
