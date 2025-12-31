@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 class WalletState: ObservableObject {
     @Published var hasWallet: Bool = false

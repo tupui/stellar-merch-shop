@@ -12,16 +12,20 @@ class NFCOperationCoordinator: NSObject {
     private let blockchainService = BlockchainService()
     private let ipfsService = IPFSService()
     
+    // MARK: - Constants
+    private let NDEF_AID: [UInt8] = [0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01]
+    private let NDEF_FILE_ID: [UInt8] = [0xE1, 0x04]
+    
     // Callbacks
     var onLoadNFTSuccess: ((String, UInt64) -> Void)?
     var onLoadNFTError: ((String) -> Void)?
-    var onClaimSuccess: (() -> Void)?
+    var onClaimSuccess: ((UInt64) -> Void)? // tokenId
     var onClaimError: ((String) -> Void)?
     var onTransferSuccess: (() -> Void)?
     var onTransferError: ((String) -> Void)?
     var onSignSuccess: ((String, String, String) -> Void)? // globalCounter, keyCounter, signature
     var onSignError: ((String) -> Void)?
-    var onMintSuccess: ((UInt64) -> Void)?
+    var onMintSuccess: ((UInt64) -> Void)? // tokenId
     var onMintError: ((String) -> Void)?
     
     // Helper to get ViewController for presenting
@@ -56,6 +60,11 @@ class NFCOperationCoordinator: NSObject {
     
     private var loadNFTCompletion: ((Bool, String?) -> Void)?
     
+    // Store NFCHelper instances to prevent deallocation
+    private var claimNFCHelper: NFCHelper?
+    private var transferNFCHelper: NFCHelper?
+    private var mintNFCHelper: NFCHelper?
+    
     // MARK: - Claim NFT
     func claimNFT(completion: @escaping (Bool, String?) -> Void) {
         guard walletService.getStoredWallet() != nil else {
@@ -73,11 +82,18 @@ class NFCOperationCoordinator: NSObject {
             return
         }
         
-        let nfcHelper = NFCHelper()
-        nfcHelper.OnTagEvent = { [weak self] success, tag, session, error in
+        // Store helper as property to prevent deallocation
+        claimNFCHelper = NFCHelper()
+        claimNFCHelper?.OnTagEvent = { [weak self] success, tag, session, error in
             guard let self = self else { return }
             if success, let tag = tag, let session = session {
-                Task {
+                // Show loading state immediately
+                Task { @MainActor in
+                    session.alertMessage = "Processing claim... Please wait."
+                }
+                
+                // Run blockchain operations on background thread
+                Task.detached {
                     do {
                         let claimResult = try await self.claimService.executeClaim(
                             tag: tag,
@@ -89,24 +105,40 @@ class NFCOperationCoordinator: NSObject {
                             }
                         }
                         
+                        // Success - update UI on main thread
                         await MainActor.run {
                             session.alertMessage = "Claim successful!"
-                            session.invalidate()
                             completion(true, nil)
+                            // Trigger callback with tokenId for NFT loading
+                            self.onClaimSuccess?(claimResult.tokenId)
+                        }
+                        
+                        // Wait for confetti animation, then invalidate session
+                        try await Task.sleep(nanoseconds: 3_000_000_000)
+                        
+                        await MainActor.run {
+                            session.invalidate()
+                            self.claimNFCHelper = nil
                         }
                     } catch {
+                        // Error - update UI on main thread
                         await MainActor.run {
                             let errorMessage = (error as? AppError)?.localizedDescription ?? "Claim failed"
                             session.invalidate(errorMessage: errorMessage)
                             completion(false, errorMessage)
+                            self.onClaimError?(errorMessage)
+                            self.claimNFCHelper = nil
                         }
                     }
                 }
             } else {
-                completion(false, error ?? "Failed to detect NFC tag")
+                let errorMsg = error ?? "Failed to detect NFC tag"
+                completion(false, errorMsg)
+                self.onClaimError?(errorMsg)
+                self.claimNFCHelper = nil
             }
         }
-        nfcHelper.BeginSession()
+        claimNFCHelper?.BeginSession()
     }
     
     // MARK: - Transfer NFT
@@ -126,11 +158,18 @@ class NFCOperationCoordinator: NSObject {
             return
         }
         
-        let nfcHelper = NFCHelper()
-        nfcHelper.OnTagEvent = { [weak self] success, tag, session, error in
+        // Store helper as property to prevent deallocation
+        transferNFCHelper = NFCHelper()
+        transferNFCHelper?.OnTagEvent = { [weak self] success, tag, session, error in
             guard let self = self else { return }
             if success, let tag = tag, let session = session {
-                Task {
+                // Show loading state immediately
+                Task { @MainActor in
+                    session.alertMessage = "Processing transfer... Please wait."
+                }
+                
+                // Run blockchain operations on background thread
+                Task.detached {
                     do {
                         _ = try await self.transferService.executeTransfer(
                             tag: tag,
@@ -144,24 +183,33 @@ class NFCOperationCoordinator: NSObject {
                             }
                         }
                         
+                        // Success - update UI on main thread
                         await MainActor.run {
                             session.alertMessage = "Transfer successful!"
                             session.invalidate()
                             completion(true, nil)
+                            self.onTransferSuccess?()
+                            self.transferNFCHelper = nil
                         }
                     } catch {
+                        // Error - update UI on main thread
                         await MainActor.run {
                             let errorMessage = (error as? AppError)?.localizedDescription ?? "Transfer failed"
                             session.invalidate(errorMessage: errorMessage)
                             completion(false, errorMessage)
+                            self.onTransferError?(errorMessage)
+                            self.transferNFCHelper = nil
                         }
                     }
                 }
             } else {
-                completion(false, error ?? "Failed to detect NFC tag")
+                let errorMsg = error ?? "Failed to detect NFC tag"
+                completion(false, errorMsg)
+                self.onTransferError?(errorMsg)
+                self.transferNFCHelper = nil
             }
         }
-        nfcHelper.BeginSession()
+        transferNFCHelper?.BeginSession()
     }
     
     // MARK: - Sign Message
@@ -205,11 +253,18 @@ class NFCOperationCoordinator: NSObject {
             return
         }
         
-        let nfcHelper = NFCHelper()
-        nfcHelper.OnTagEvent = { [weak self] success, tag, session, error in
+        // Store helper as property to prevent deallocation
+        mintNFCHelper = NFCHelper()
+        mintNFCHelper?.OnTagEvent = { [weak self] success, tag, session, error in
             guard let self = self else { return }
             if success, let tag = tag, let session = session {
-                Task {
+                // Show loading state immediately
+                Task { @MainActor in
+                    session.alertMessage = "Processing mint... Please wait."
+                }
+                
+                // Run blockchain operations on background thread
+                Task.detached {
                     do {
                         let mintResult = try await self.mintService.executeMint(
                             tag: tag,
@@ -221,24 +276,50 @@ class NFCOperationCoordinator: NSObject {
                             }
                         }
                         
+                        // Success - update UI on main thread
                         await MainActor.run {
                             session.alertMessage = "Mint successful!"
-                            session.invalidate()
                             completion(true, nil)
+                            // Trigger callback with tokenId
+                            self.onMintSuccess?(mintResult.tokenId)
+                        }
+                        
+                        // Wait for confetti animation, then invalidate session
+                        try await Task.sleep(nanoseconds: 3_000_000_000)
+                        
+                        await MainActor.run {
+                            session.invalidate()
+                            self.mintNFCHelper = nil
                         }
                     } catch {
+                        // Error - update UI on main thread
                         await MainActor.run {
                             let errorMessage = (error as? AppError)?.localizedDescription ?? "Mint failed"
                             session.invalidate(errorMessage: errorMessage)
                             completion(false, errorMessage)
+                            self.onMintError?(errorMessage)
+                            self.mintNFCHelper = nil
                         }
                     }
                 }
             } else {
-                completion(false, error ?? "Failed to detect NFC tag")
+                let errorMsg = error ?? "Failed to detect NFC tag"
+                completion(false, errorMsg)
+                self.onMintError?(errorMsg)
+                self.mintNFCHelper = nil
             }
         }
-        nfcHelper.BeginSession()
+        mintNFCHelper?.BeginSession()
+    }
+    
+    /// Reset all NFC helper state - call this if operations get stuck
+    func resetState() {
+        claimNFCHelper = nil
+        transferNFCHelper = nil
+        mintNFCHelper = nil
+        loadNFTCompletion = nil
+        signMessageData = nil
+        signMessageCompletion = nil
     }
 }
 
@@ -257,11 +338,14 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
                 // User canceled, notify completion
                 if let completion = loadNFTCompletion {
                     completion(false, "User canceled")
+                    onLoadNFTError?("User canceled")
                     loadNFTCompletion = nil
                 }
                 if let completion = signMessageCompletion {
                     completion(false, nil, nil, "User canceled")
+                    onSignError?("User canceled")
                     signMessageCompletion = nil
+                    signMessageData = nil
                 }
                 return
             default:
@@ -271,12 +355,17 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
         
         // Handle other errors
         if let completion = loadNFTCompletion {
-            completion(false, error.localizedDescription)
+            let errorMsg = error.localizedDescription
+            completion(false, errorMsg)
+            onLoadNFTError?(errorMsg)
             loadNFTCompletion = nil
         }
         if let completion = signMessageCompletion {
-            completion(false, nil, nil, error.localizedDescription)
+            let errorMsg = error.localizedDescription
+            completion(false, nil, nil, errorMsg)
+            onSignError?(errorMsg)
             signMessageCompletion = nil
+            signMessageData = nil
         }
     }
     
@@ -309,8 +398,10 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
     private func handleLoadNFTTag(tag: NFCTag, session: NFCTagReaderSession) async {
         guard case .iso7816(let iso7816Tag) = tag else {
             await MainActor.run {
-                session.invalidate(errorMessage: "Invalid tag type")
-                loadNFTCompletion?(false, "Invalid tag type")
+                let errorMsg = "Invalid tag type"
+                session.invalidate(errorMessage: errorMsg)
+                loadNFTCompletion?(false, errorMsg)
+                onLoadNFTError?(errorMsg)
                 loadNFTCompletion = nil
             }
             return
@@ -340,11 +431,22 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
                 throw AppError.crypto(.invalidKey("Invalid public key format from chip"))
             }
             
-            // Get token ID
+            // Update session message before blockchain operation
+            await MainActor.run {
+                session.alertMessage = "Getting token ID from blockchain..."
+            }
+            
+            // Get token ID (this needs to happen while session is active for proper flow)
             let tokenId = try await getTokenIdForChip(contractId: contractId, publicKey: publicKeyData)
             
+            // Close NFC session immediately after getting token ID
             await MainActor.run {
+                session.alertMessage = "Chip data read successfully"
                 session.invalidate()
+            }
+            
+            // Continue on background thread to load NFT
+            await MainActor.run {
                 loadNFTCompletion?(true, nil)
                 loadNFTCompletion = nil
                 // Trigger NFT view presentation
@@ -355,6 +457,7 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
                 let errorMessage = (error as? AppError)?.localizedDescription ?? "Failed to load NFT"
                 session.invalidate(errorMessage: errorMessage)
                 loadNFTCompletion?(false, errorMessage)
+                onLoadNFTError?(errorMessage)
                 loadNFTCompletion = nil
             }
         }
@@ -395,6 +498,8 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
                     session.alertMessage = "Signature generated successfully"
                     session.invalidate()
                     self.signMessageCompletion?(true, globalCounterHex, keyCounterHex, derSignatureHex)
+                    // Trigger callback
+                    self.onSignSuccess?(globalCounterHex, keyCounterHex, derSignatureHex)
                     self.signMessageCompletion = nil
                     self.signMessageData = nil
                 }
@@ -403,6 +508,7 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
                     let errorMsg = error ?? "Failed to generate signature"
                     session.invalidate(errorMessage: errorMsg)
                     self.signMessageCompletion?(false, nil, nil, errorMsg)
+                    self.onSignError?(errorMsg)
                     self.signMessageCompletion = nil
                     self.signMessageData = nil
                 }
@@ -411,9 +517,6 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
     }
     
     // MARK: - Helper Methods (copied from ViewController)
-    private let NDEF_AID: [UInt8] = [0xD2, 0x76, 0x00, 0x00, 0x85, 0x01, 0x01]
-    private let NDEF_FILE_ID: [UInt8] = [0xE1, 0x04]
-    
     private func readNDEFUrl(tag: NFCISO7816Tag, session: NFCTagReaderSession) async throws -> String? {
         // Select NDEF Application
         guard let selectAppAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x04, 0x00] + [UInt8(NDEF_AID.count)] + NDEF_AID + [0x00])) else {
@@ -466,7 +569,7 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
     private func parseNDEFUrl(from data: Data) -> String? {
         guard data.count >= 7 else { return nil }
         
-        let flags = data[0]
+        let _ = data[0] // flags
         let typeLength = data[1]
         let payloadLength = data[2]
         let typeStart = 3

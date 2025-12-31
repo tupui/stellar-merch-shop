@@ -217,7 +217,7 @@ impl NFCtoNFTContract for StellarMerchShop {
 }
 
 /// Convert an u64 to its decimal string representation as Bytes
-/// Implementation inspired by OpenZeppelin's Strings.toString()
+/// Implementation inspired by OpenZeppelin's token_id_to_string
 fn u64_to_decimal_bytes(e: &Env, mut value: u64) -> Bytes {
     if value == 0 {
         return Bytes::from_slice(e, b"0");

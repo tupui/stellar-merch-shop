@@ -63,7 +63,7 @@ struct NFTLoadingView: View {
     private func loadNFT() {
         Task {
             do {
-                guard let wallet = walletService.getStoredWallet(),
+                guard let _ = walletService.getStoredWallet(),
                       let privateKey = try SecureKeyStorage().loadPrivateKey() else {
                     await MainActor.run {
                         errorMessage = "No wallet found"

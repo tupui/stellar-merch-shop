@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     @ObservedObject var walletState: WalletState
@@ -6,33 +7,43 @@ struct SettingsView: View {
     @State private var contractId: String = AppConfig.shared.contractId
     @State private var showLogoutAlert = false
     @State private var saveStatus: String?
+    @State private var contractCopied = false
     
     private let walletService = WalletService()
     
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Network Configuration")) {
+                // Wallet Address Section
+                if let wallet = walletService.getStoredWallet() {
+                    Section(header: Text("Wallet")) {
+                        WalletAddressCard(
+                            address: wallet.address,
+                            network: network
+                        )
+                    }
+                }
+                
+                Section(header: Text("Smart Contract")) {
                     Picker("Network", selection: $network) {
                         Text("Testnet").tag(AppNetwork.testnet)
                         Text("Mainnet").tag(AppNetwork.mainnet)
                     }
                     
-                    TextField("Contract ID", text: $contractId)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                    
-                    // Show build config info if available
-                    if !AppConfig.shared.getBuildConfigContractId().isEmpty {
-                        let buildConfigId = AppConfig.shared.getBuildConfigContractId()
-                        if contractId.isEmpty {
-                            Text("Build config: \(buildConfigId)")
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text("Build config: \(buildConfigId) (override in field)")
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
+                    HStack {
+                        TextField("Address", text: $contractId)
+                            .font(.system(size: 15, design: .monospaced))
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                        
+                        if !contractId.isEmpty {
+                            Button(action: copyContractId) {
+                                Image(systemName: contractCopied ? "checkmark" : "doc.on.doc")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(contractCopied ? .green : .chimpYellow)
+                                    .frame(width: 32, height: 32)
+                            }
+                            .buttonStyle(PlainButtonStyle())
                         }
                     }
                 }
@@ -46,6 +57,13 @@ struct SettingsView: View {
                                 Text(status)
                                     .foregroundColor(.green)
                             }
+                        }
+                    }
+                    
+                    Button(action: resetToDefault) {
+                        HStack {
+                            Text("Reset to Default")
+                            Spacer()
                         }
                     }
                 }
@@ -84,6 +102,36 @@ struct SettingsView: View {
         saveStatus = "Saved!"
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             saveStatus = nil
+        }
+    }
+    
+    private func resetToDefault() {
+        // Reset to build configuration defaults
+        UserDefaults.standard.removeObject(forKey: "app_network")
+        UserDefaults.standard.removeObject(forKey: "app_contract_id")
+        
+        network = AppConfig.shared.currentNetwork
+        contractId = AppConfig.shared.contractId
+        
+        saveStatus = "Reset!"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            saveStatus = nil
+        }
+    }
+    
+    private func copyContractId() {
+        guard !contractId.isEmpty else { return }
+        
+        UIPasteboard.general.string = contractId
+        
+        withAnimation {
+            contractCopied = true
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            withAnimation {
+                contractCopied = false
+            }
         }
     }
     

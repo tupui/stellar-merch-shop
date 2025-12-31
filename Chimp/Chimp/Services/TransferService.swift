@@ -378,7 +378,7 @@ class TransferService {
         }
 
         // Parse NDEF record
-        let flags = data[0]
+        let _ = data[0] // flags
         let typeLength = data[1]
         let payloadLength = data[2]
         let typeStart = 3

@@ -1,9 +1,16 @@
 import SwiftUI
 
+// Preference key to track scroll offset
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
-    
-    private let walletService = WalletService()
+    @State private var scrollOffset: CGFloat = 0
     
     var body: some View {
         NavigationView {
@@ -12,34 +19,58 @@ struct HomeView: View {
                 Color.chimpBackground
                     .ignoresSafeArea()
                 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Header
-                        headerSection
-                        
-                        // Error message
-                        if let error = viewModel.errorMessage {
-                            Text(error)
-                                .font(.system(size: 14, weight: .regular))
-                                .foregroundColor(.red)
-                                .padding(.horizontal, 20)
+                GeometryReader { geometry in
+                    ScrollView {
+                        VStack(spacing: 24) {
+                            // Header with scroll-based zoom
+                            headerSection(scrollOffset: scrollOffset)
+                                .background(
+                                    GeometryReader { headerGeometry in
+                                        Color.clear
+                                            .preference(
+                                                key: ScrollOffsetPreferenceKey.self,
+                                                value: -headerGeometry.frame(in: .named("scroll")).minY
+                                            )
+                                    }
+                                )
+                            
+                            // Error message
+                            if let error = viewModel.errorMessage {
+                                Text(error)
+                                    .font(.system(size: 14, weight: .regular))
+                                    .foregroundColor(.red)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .fill(Color.red.opacity(0.1))
+                                    )
+                            }
+                            
+                            // Main action cards
+                            actionCardsSection
                         }
-                        
-                        // Main action cards
-                        actionCardsSection
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                        .padding(.bottom, 32)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
+                    .coordinateSpace(name: "scroll")
+                    .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                        scrollOffset = value
+                    }
                 }
             }
-            .navigationTitle("Chimp")
-            .navigationBarTitleDisplayMode(.large)
-            .sheet(isPresented: $viewModel.showingNFCOperation) {
-                if let operationType = viewModel.nfcOperationType {
-                    NFCOperationView(
-                        operationType: operationType,
-                        isPresented: $viewModel.showingNFCOperation
-                    )
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    // Empty toolbar to remove default title
+                }
+            }
+            .overlay {
+                // Confetti overlay for success animations
+                if viewModel.showingConfetti {
+                    ConfettiOverlay(message: viewModel.confettiMessage ?? "")
                 }
             }
             .sheet(isPresented: $viewModel.showingNFTView) {
@@ -72,37 +103,48 @@ struct HomeView: View {
                     viewModel.signMessage(message: message)
                 }
             }
+            .sheet(isPresented: $viewModel.showingSignatureView) {
+                if let signature = viewModel.signatureData {
+                    SignatureDisplayView(
+                        globalCounter: signature.globalCounter,
+                        keyCounter: signature.keyCounter,
+                        derSignature: signature.derSignature,
+                        isPresented: $viewModel.showingSignatureView
+                    )
+                }
+            }
+            .alert("Success", isPresented: $viewModel.showingSuccessAlert) {
+                Button("OK") {
+                    viewModel.showingSuccessAlert = false
+                }
+            } message: {
+                Text(viewModel.successMessage ?? "")
+            }
         }
     }
     
-    private var headerSection: some View {
-        VStack(spacing: 12) {
-            // Monkey icon placeholder - you can add your pixel art here
-            Image(systemName: "pawprint.fill")
-                .font(.system(size: 60))
-                .foregroundColor(.chimpYellow)
-                .padding(.bottom, 8)
+    private func headerSection(scrollOffset: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            // Calculate scale based on scroll offset
+            // Logo starts at scale 1.0 and scales down to 0.75 as user scrolls
+            let minScale: CGFloat = 0.75
+            let maxScroll: CGFloat = 100 // Start scaling after 100pt of scroll
+            let scale = max(minScale, 1.0 - min(scrollOffset / maxScroll, 1.0 - minScale))
             
-            Text("No Monkeying Around")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-            
-            Text("Only Chimpin'")
-                .font(.system(size: 18, weight: .medium, design: .rounded))
-                .foregroundColor(.chimpYellow)
-            
-            if let wallet = walletService.getStoredWallet() {
-                Text(wallet.address)
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .padding(.top, 4)
-            }
+            Image("Logo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 140, height: 140)
+                .scaleEffect(scale)
+                .shadow(color: Color.black.opacity(0.1), radius: 20, x: 0, y: 10)
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: scale)
+                .padding(.top, 60)
+                .padding(.bottom, 70)
         }
-        .padding(.vertical, 20)
     }
     
     private var actionCardsSection: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             // Load NFT Card
             ActionCard(
                 icon: "photo.fill",

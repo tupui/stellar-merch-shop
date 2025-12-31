@@ -133,8 +133,6 @@ class BlockchainService {
             }
 
             throw AppError.blockchain(.invalidResponse)
-
-            throw AppError.blockchain(.invalidResponse)
         }
     }
 
@@ -201,8 +199,16 @@ class BlockchainService {
             assembledTx = try await AssembledTransaction.build(options: assembledOptions)
             print("BlockchainService: Transaction built successfully")
         } catch {
-            // Check if it's a contract error (simulation errors can bubble up during build)
+            // Check for account not found errors during transaction building
             let errorString = "\(error)"
+            let errorLowercased = errorString.lowercased()
+            if errorLowercased.contains("could not find account") || 
+               errorLowercased.contains("account not found") ||
+               errorLowercased.contains("does not exist") {
+                throw AppError.wallet(.noWallet) // Use existing error case
+            }
+            
+            // Check if it's a contract error (simulation errors can bubble up during build)
             if let contractError = ContractError.fromErrorString(errorString) {
                 throw AppError.blockchain(.contract(contractError))
             }
@@ -410,7 +416,7 @@ class BlockchainService {
             throw AppError.blockchain(.invalidResponse)
         }
         
-        let rpcClient = SorobanServer(endpoint: config.rpcUrl)
+        let _ = SorobanServer(endpoint: config.rpcUrl)
         
         // Build the contract call
         let network: Network
@@ -635,7 +641,7 @@ class BlockchainService {
         print("BlockchainService: Network: \(network)")
         print("BlockchainService: RPC URL: \(config.rpcUrl)")
 
-        let rpcClient = SorobanServer(endpoint: config.rpcUrl)
+        let _ = SorobanServer(endpoint: config.rpcUrl)
 
         print("BlockchainService: Creating ClientOptions with contractId: '\(contractId)'")
         let clientOptions = ClientOptions(
@@ -915,7 +921,7 @@ class BlockchainService {
 
             // Extract token ID by simulating the transaction directly
             var tokenId: UInt64 = 0
-            let rpcClient = SorobanServer(endpoint: config.rpcUrl)
+            let _ = SorobanServer(endpoint: config.rpcUrl)
             if let rawTx = assembledTx.raw {
                 let simulateRequest = SimulateTransactionRequest(transaction: rawTx)
                 let simulateResponse = await self.rpcClient.simulateTransaction(simulateTxRequest: simulateRequest)
@@ -1000,7 +1006,7 @@ class BlockchainService {
         
         // Send the transaction object directly (matching test script: rpcClient.sendTransaction(transaction: transaction))
         // This matches the JS pattern: rpcServer.sendTransaction(transaction)
-        let rpcClient = SorobanServer(endpoint: config.rpcUrl)
+        let _ = SorobanServer(endpoint: config.rpcUrl)
         print("BlockchainService: Sending transaction to RPC...")
         progressCallback?("Sending transaction to network...")
         let sentTxResponse = await self.rpcClient.sendTransaction(transaction: transaction)
@@ -1056,8 +1062,17 @@ class BlockchainService {
             print("BlockchainService: Error type: \(type(of: error))")
             print("BlockchainService: Error details: \(error)")
             
-            // Use structured error parsing
+            // Check for account not found errors
             let errorString = "\(error)"
+            let errorLowercased = errorString.lowercased()
+            if errorLowercased.contains("could not find account") || 
+               errorLowercased.contains("account not found") ||
+               errorLowercased.contains("does not exist") ||
+               errorLowercased.contains("requestfailed") {
+                throw AppError.wallet(.noWallet) // Account doesn't exist on network
+            }
+            
+            // Use structured error parsing
             if let contractError = ContractError.fromErrorString(errorString) {
                 print("BlockchainService: Contract error detected in send response: \(contractError)")
                 throw AppError.blockchain(.contract(contractError))

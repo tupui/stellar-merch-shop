@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import SwiftUI
 import CoreNFC
 import stellarsdk
 
@@ -278,6 +279,7 @@ class ViewController: UIViewController, NFCTagReaderSessionDelegate {
 
     var nfc_helper: NFCHelper?
     var session: NFCTagReaderSession?
+    private let walletState = WalletState()
     private let walletService = WalletService()
     private let claimService = ClaimService()
     private let transferService = TransferService()
@@ -627,7 +629,7 @@ class ViewController: UIViewController, NFCTagReaderSessionDelegate {
         }
 
         // Parse NDEF record
-        let flags = data[0]
+        let _ = data[0] // flags
         let typeLength = data[1]
         let payloadLength = data[2]
         let typeStart = 3
@@ -798,7 +800,7 @@ class ViewController: UIViewController, NFCTagReaderSessionDelegate {
                             // For backward compatibility, treat unknown errors as unclaimed
                             try await self.loadUnclaimedNFT(contractId: contractId, tokenId: tokenId, keyPair: keyPair)
                         }
-                    } catch let _ as AppError {
+                    } catch _ as AppError {
                         // Error will be handled in the NFT view if needed
                     } catch {
                         // Error will be handled in the NFT view if needed
@@ -960,11 +962,9 @@ class ViewController: UIViewController, NFCTagReaderSessionDelegate {
     }
 
     @objc func SettingsButtonTapped() {
-        let settingsView = SettingsView()
-        settingsView.onLogout = { [weak self] in
-            self?.showLoginView()
-        }
-        let navController = UINavigationController(rootViewController: settingsView)
+        let settingsView = SettingsView(walletState: walletState)
+        let hostingController = UIHostingController(rootView: settingsView)
+        let navController = UINavigationController(rootViewController: hostingController)
         present(navController, animated: true)
     }
     
@@ -1128,14 +1128,10 @@ class ViewController: UIViewController, NFCTagReaderSessionDelegate {
             return
         }
         
-        let loginView = LoginView()
-        loginView.onLoginSuccess = { [weak self] in
-            self?.dismiss(animated: true) {
-                self?.updateUIForLoggedInState()
-            }
-        }
-        let navController = UINavigationController(rootViewController: loginView)
-        navController.modalPresentationStyle = .fullScreen
+        let loginView = LoginView(walletState: walletState)
+        let hostingController = UIHostingController(rootView: loginView)
+        let navController = UINavigationController(rootViewController: hostingController)
+        navController.modalPresentationStyle = UIModalPresentationStyle.fullScreen
         present(navController, animated: true)
     }
     
@@ -1241,7 +1237,7 @@ class ViewController: UIViewController, NFCTagReaderSessionDelegate {
                 }
 
                 // Run blockchain operations on background thread
-                Task.detached {
+                Task.detached { () -> Void in
                     do {
                         let claimResult = try await self.claimService.executeClaim(
                             tag: tag,
@@ -1269,18 +1265,26 @@ class ViewController: UIViewController, NFCTagReaderSessionDelegate {
                             session.invalidate()
                         }
 
-                        Task.detached {
+                        Task.detached { () -> Void in
                             do {
-                                // Get keyPair for NFT loading
-                                guard self.walletService.getStoredWallet() != nil else {
+                                // Get keyPair for NFT loading - must be called on main actor
+                                let wallet = await MainActor.run {
+                                    self.walletService.getStoredWallet()
+                                }
+                                
+                                guard wallet != nil else {
                                     await MainActor.run {
                                         self.showNFTError("No wallet found")
                                     }
                                     return
                                 }
 
-                                let secureStorage = SecureKeyStorage()
-                                guard let privateKey = try secureStorage.loadPrivateKey() else {
+                                let privateKey = try await MainActor.run {
+                                    let secureStorage = SecureKeyStorage()
+                                    return try secureStorage.loadPrivateKey()
+                                }
+                                
+                                guard let privateKey = privateKey else {
                                     await MainActor.run {
                                         self.showNFTError("No private key found")
                                     }
@@ -1334,7 +1338,7 @@ class ViewController: UIViewController, NFCTagReaderSessionDelegate {
                 }
 
                 // Run blockchain operations on background thread
-                Task.detached {
+                Task.detached { () -> Void in
                     do {
                         _ = try await self.transferService.executeTransfer(
                             tag: tag,
@@ -1416,7 +1420,7 @@ class ViewController: UIViewController, NFCTagReaderSessionDelegate {
                 }
 
                 // Run blockchain operations on background thread
-                Task.detached {
+                Task.detached { () -> Void in
                     do {
                         let mintResult = try await self.mintService.executeMint(
                             tag: tag,

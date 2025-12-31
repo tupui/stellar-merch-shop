@@ -377,7 +377,7 @@ class MintService {
         // URI data
 
         let payloadLength = 1 + urlData.count // identifier code + url
-        let recordLength = 1 + 1 + 1 + 1 + payloadLength // header + type length + payload length + type + payload
+        let _ = 1 + 1 + 1 + 1 + payloadLength // recordLength: header + type length + payload length + type + payload
 
         var record = Data()
         record.append(0xD1) // TNF=URI, SR=1, ME=1, MB=1

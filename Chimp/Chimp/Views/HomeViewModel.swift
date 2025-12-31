@@ -8,11 +8,17 @@ class HomeViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var showingTransferAlert = false
     @Published var showingSignAlert = false
-    @Published var showingNFCOperation = false
-    @Published var nfcOperationType: NFCOperationView.OperationType?
     @Published var showingNFTView = false
     @Published var loadedNFTContractId: String?
     @Published var loadedNFTTokenId: UInt64?
+    
+    // Result states for post-operation display
+    @Published var showingSignatureView = false
+    @Published var signatureData: (globalCounter: String, keyCounter: String, derSignature: String)?
+    @Published var showingSuccessAlert = false
+    @Published var successMessage: String?
+    @Published var showingConfetti = false
+    @Published var confettiMessage: String?
     
     // Operation coordinator will handle the actual NFC operations
     let nfcCoordinator = NFCOperationCoordinator()
@@ -34,6 +40,75 @@ class HomeViewModel: ObservableObject {
             DispatchQueue.main.async {
                 self?.errorMessage = error
             }
+        }
+        
+        nfcCoordinator.onClaimSuccess = { [weak self] tokenId in
+            DispatchQueue.main.async {
+                self?.showConfetti(message: "Claim successful!")
+                // After confetti, load the NFT
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                    self?.loadedNFTContractId = AppConfig.shared.contractId
+                    self?.loadedNFTTokenId = tokenId
+                    self?.showingNFTView = true
+                }
+            }
+        }
+        
+        nfcCoordinator.onClaimError = { [weak self] error in
+            DispatchQueue.main.async {
+                self?.errorMessage = error
+            }
+        }
+        
+        nfcCoordinator.onTransferSuccess = { [weak self] in
+            DispatchQueue.main.async {
+                self?.successMessage = "NFT transferred successfully"
+                self?.showingSuccessAlert = true
+            }
+        }
+        
+        nfcCoordinator.onTransferError = { [weak self] error in
+            DispatchQueue.main.async {
+                self?.errorMessage = error
+            }
+        }
+        
+        nfcCoordinator.onSignSuccess = { [weak self] globalCounter, keyCounter, signature in
+            DispatchQueue.main.async {
+                self?.signatureData = (globalCounter, keyCounter, signature)
+                self?.showingSignatureView = true
+            }
+        }
+        
+        nfcCoordinator.onSignError = { [weak self] error in
+            DispatchQueue.main.async {
+                self?.errorMessage = error
+            }
+        }
+        
+        nfcCoordinator.onMintSuccess = { [weak self] tokenId in
+            DispatchQueue.main.async {
+                self?.showConfetti(message: "Mint successful! Token ID: \(tokenId)")
+            }
+        }
+        
+        nfcCoordinator.onMintError = { [weak self] error in
+            DispatchQueue.main.async {
+                self?.errorMessage = error
+            }
+        }
+    }
+    
+    private func showConfetti(message: String) {
+        confettiMessage = message
+        showingConfetti = true
+        // Hide confetti after 3 seconds and show success alert
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            self?.showingConfetti = false
+            self?.successMessage = message
+            self?.showingSuccessAlert = true
+            // Reset coordinator state after mint to ensure clean state
+            self?.nfcCoordinator.resetState()
         }
     }
     
@@ -67,8 +142,11 @@ class HomeViewModel: ObservableObject {
             return
         }
         
-        showingNFCOperation = true
-        nfcOperationType = .claimNFT
+        errorMessage = nil
+        // Start NFC operation immediately - no modal
+        nfcCoordinator.claimNFT { success, error in
+            // Results handled via callbacks
+        }
     }
     
     func transferNFT() {
@@ -86,8 +164,11 @@ class HomeViewModel: ObservableObject {
     }
     
     func transferNFT(recipient: String, tokenId: UInt64) {
-        showingNFCOperation = true
-        nfcOperationType = .transferNFT(recipient: recipient, tokenId: tokenId)
+        errorMessage = nil
+        // Start NFC operation immediately - no modal
+        nfcCoordinator.transferNFT(recipientAddress: recipient, tokenId: tokenId) { success, error in
+            // Results handled via callbacks
+        }
     }
     
     func signMessage() {
@@ -95,8 +176,11 @@ class HomeViewModel: ObservableObject {
     }
     
     func signMessage(message: Data) {
-        showingNFCOperation = true
-        nfcOperationType = .signMessage(message: message)
+        errorMessage = nil
+        // Start NFC operation immediately - no modal
+        nfcCoordinator.signMessage(message: message) { success, globalCounter, keyCounter, signature in
+            // Results handled via callbacks
+        }
     }
     
     func mintNFT() {
@@ -115,8 +199,11 @@ class HomeViewModel: ObservableObject {
             return
         }
         
-        showingNFCOperation = true
-        nfcOperationType = .mintNFT
+        errorMessage = nil
+        // Start NFC operation immediately - no modal
+        nfcCoordinator.mintNFT { success, error in
+            // Results handled via callbacks
+        }
     }
 }
 
