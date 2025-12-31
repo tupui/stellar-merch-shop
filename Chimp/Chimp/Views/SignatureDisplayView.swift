@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct SignatureDisplayView: View {
-    let globalCounter: String
-    let keyCounter: String
+    let globalCounter: UInt32
+    let keyCounter: UInt32
     let derSignature: String
     @Binding var isPresented: Bool
     @State private var copied = false
@@ -20,8 +20,8 @@ struct SignatureDisplayView: View {
                             .padding(.top, 20)
                         
                         VStack(alignment: .leading, spacing: 16) {
-                            InfoRow(title: "Global Counter:", value: globalCounter)
-                            InfoRow(title: "Key Counter:", value: keyCounter)
+                            InfoRow(title: "Global Counter:", value: String(globalCounter))
+                            InfoRow(title: "Key Counter:", value: String(keyCounter))
                             InfoRow(title: "DER Signature:", value: derSignature)
                         }
                         .padding(.horizontal, 20)

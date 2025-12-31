@@ -25,7 +25,7 @@ class HomeViewModel: ObservableObject {
     
     // Result states for post-operation display
     @Published var showingSignatureView = false
-    @Published var signatureData: (globalCounter: String, keyCounter: String, derSignature: String)?
+    @Published var signatureData: (globalCounter: UInt32, keyCounter: UInt32, derSignature: String)?
     @Published var showingConfetti = false
     @Published var confettiMessage: String?
     
@@ -94,7 +94,7 @@ class HomeViewModel: ObservableObject {
         
         nfcCoordinator.onSignSuccess = { [weak self] globalCounter, keyCounter, signature in
             DispatchQueue.main.async {
-                self?.signatureData = (globalCounter, keyCounter, signature)
+                self?.signatureData = (globalCounter: globalCounter, keyCounter: keyCounter, derSignature: signature)
                 self?.showingSignatureView = true
             }
         }

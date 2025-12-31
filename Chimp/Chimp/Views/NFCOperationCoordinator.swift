@@ -23,7 +23,7 @@ class NFCOperationCoordinator: NSObject {
     var onClaimError: ((String) -> Void)?
     var onTransferSuccess: (() -> Void)?
     var onTransferError: ((String) -> Void)?
-    var onSignSuccess: ((String, String, String) -> Void)? // globalCounter, keyCounter, signature
+    var onSignSuccess: ((UInt32, UInt32, String) -> Void)? // globalCounter, keyCounter, signature
     var onSignError: ((String) -> Void)?
     var onMintSuccess: ((UInt64) -> Void)? // tokenId
     var onMintError: ((String) -> Void)?
@@ -229,7 +229,7 @@ class NFCOperationCoordinator: NSObject {
     }
     
     private var signMessageData: Data?
-    private var signMessageCompletion: ((Bool, String?, String?, String?) -> Void)?
+    private var signMessageCompletion: ((Bool, UInt32?, UInt32?, String?) -> Void)?
     
     // MARK: - Mint NFT
     func mintNFT(completion: @escaping (Bool, String?) -> Void) {
@@ -486,20 +486,21 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
             guard let self = self else { return }
             
             if success, let response = response, response.count >= 8 {
-                let globalCounter = response.subdata(in: 0..<4)
-                let keyCounter = response.subdata(in: 4..<8)
+                let globalCounterData = response.subdata(in: 0..<4)
+                let keyCounterData = response.subdata(in: 4..<8)
                 let derSignature = response.subdata(in: 8..<response.count)
                 
-                let globalCounterHex = globalCounter.hexEncodedString()
-                let keyCounterHex = keyCounter.hexEncodedString()
+                // Convert 4-byte Data to UInt32 (big-endian)
+                let globalCounter = globalCounterData.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
+                let keyCounter = keyCounterData.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
                 let derSignatureHex = derSignature.hexEncodedString()
                 
                 DispatchQueue.main.async {
                     session.alertMessage = "Signature generated successfully"
                     session.invalidate()
-                    self.signMessageCompletion?(true, globalCounterHex, keyCounterHex, derSignatureHex)
+                    self.signMessageCompletion?(true, globalCounter, keyCounter, derSignatureHex)
                     // Trigger callback
-                    self.onSignSuccess?(globalCounterHex, keyCounterHex, derSignatureHex)
+                    self.onSignSuccess?(globalCounter, keyCounter, derSignatureHex)
                     self.signMessageCompletion = nil
                     self.signMessageData = nil
                 }
