@@ -38,7 +38,7 @@ struct HomeView: View {
                         VStack(spacing: 20) {
                             // Error message
                             if let error = viewModel.errorMessage {
-                                HStack(alignment: .top, spacing: 12) {
+                                HStack(alignment: .center, spacing: 12) {
                                     Text(error)
                                         .font(.system(size: 14, weight: .regular))
                                         .foregroundColor(.red)

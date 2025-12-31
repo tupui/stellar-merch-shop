@@ -213,7 +213,7 @@ class NFCOperationCoordinator: NSObject {
     }
     
     // MARK: - Sign Message
-    func signMessage(message: Data, completion: @escaping (Bool, String?, String?, String?) -> Void) {
+    func signMessage(message: Data, completion: @escaping (Bool, UInt32?, UInt32?, String?) -> Void) {
         guard NFCTagReaderSession.readingAvailable else {
             completion(false, nil, nil, "NFC is not available on this device")
             return
