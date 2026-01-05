@@ -1,17 +1,17 @@
 {
-  "images" : [
+  "images": [
     {
-      "filename" : "icon.png",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
+      "filename": "icon.png",
+      "idiom": "universal",
+      "platform": "ios",
+      "size": "1024x1024"
     }
   ],
-  "info" : {
-    "author" : "xcode",
-    "version" : 1
+  "info": {
+    "author": "xcode",
+    "version": 1
   },
-  "properties" : {
-    "pre-rendered" : true
+  "properties": {
+    "pre-rendered": true
   }
 }

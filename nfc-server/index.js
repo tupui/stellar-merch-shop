@@ -60,7 +60,8 @@ class NFCServer {
 
   async checkChipStatus() {
     const wasPresent = this.nfcManager.isChipPresent();
-    const isPresent = this.nfcManager.verifyConnection() &&
+    const isPresent =
+      this.nfcManager.verifyConnection() &&
       this.nfcManager.getReader()?.connection;
 
     if (wasPresent !== isPresent) {
@@ -178,7 +179,9 @@ class NFCServer {
   async signMessage(ws, messageDigestHex, keyId = 1) {
     try {
       if (!messageDigestHex || messageDigestHex.length !== 64) {
-        throw new Error("Invalid message digest (must be 32 bytes / 64 hex chars)");
+        throw new Error(
+          "Invalid message digest (must be 32 bytes / 64 hex chars)",
+        );
       }
 
       const normalizedKeyId = this._normalizeKeyId(keyId);

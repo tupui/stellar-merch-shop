@@ -21,6 +21,7 @@ Consulting Manao GmbH is the data controller responsible for processing your per
 ## 3. Types of Data We Collect
 
 **Important**: We do not operate backend servers or databases. All data is either:
+
 - Stored locally on your device using iOS Keychain (encrypted, device-only) or UserDefaults (local preferences)
 - Stored on-chain via the Stellar blockchain (publicly visible and permanent)
 - Stored on decentralized IPFS networks (publicly accessible for NFT metadata)
@@ -28,11 +29,13 @@ Consulting Manao GmbH is the data controller responsible for processing your per
 ### 3.1 Data You Provide Directly
 
 **Wallet Information**:
+
 - Stellar wallet private keys (stored in iOS Keychain, encrypted, device-only)
 - Stellar wallet public addresses (stored in UserDefaults, local device storage)
 - Wallet connection preferences
 
 **App Configuration**:
+
 - Network selection (testnet/mainnet)
 - Contract ID preferences
 - Admin mode settings (if applicable)
@@ -42,25 +45,30 @@ Consulting Manao GmbH is the data controller responsible for processing your per
 ### 3.2 Data Collected Automatically
 
 **Blockchain Data** (publicly visible on Stellar Network):
+
 - Transaction hashes and timestamps
 - Smart contract interaction data
 - NFT ownership records
 - Token transfer history
 
 **NFC Chip Data** (read only, not stored):
+
 - Chip public keys (read from NFC chips for authentication)
 - Contract IDs embedded in NFC chips
 - Token IDs associated with chips
 
 **Technical Data**:
+
 - **Device Information**: iOS version, device model (collected by Apple App Store for distribution)
 - **App Usage**: No analytics or tracking. We do not collect usage patterns or user behavior data.
 
 **Local Storage** (stored on your device only):
+
 - **iOS Keychain**: Private keys stored with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (encrypted, device-only, never synced)
 - **UserDefaults**: Wallet addresses, network preferences, contract IDs (local device storage, cleared when app is deleted)
 
 **IPFS Data** (publicly accessible):
+
 - NFT metadata and images fetched from IPFS networks
 - Content Identifiers (CIDs) for NFT content
 - Content metadata and timestamps
@@ -68,11 +76,13 @@ Consulting Manao GmbH is the data controller responsible for processing your per
 ### 3.3 Data from Third-Party Services
 
 **Stellar Network**:
+
 - Account balances and transaction history (public blockchain data)
 - Network fees and transaction status
 - Account metadata
 
 **IPFS Networks**:
+
 - NFT metadata and images (publicly accessible content)
 - Content distributed across decentralized IPFS network
 
@@ -125,6 +135,7 @@ We interact with third-party services necessary for operations:
 ### 6.2 No Backend Data Storage
 
 We do not store any user data on our own servers. All data exists on:
+
 - Your device's iOS Keychain (encrypted, device-only)
 - Your device's UserDefaults (local preferences)
 - The Stellar blockchain (permanent, public, immutable)
@@ -198,6 +209,7 @@ You can request deletion of your personal data in certain circumstances, includi
 - Objection to processing
 
 **Technical Limitations**:
+
 - **Blockchain Data**: Permanently recorded and immutable (GDPR Article 17(3)(b) exception for data made public by the data subject)
 - **IPFS Content**: Cannot be deleted once uploaded to the decentralized IPFS network
 - **Local Device Data**: You can delete all local data by uninstalling the app, which removes:
@@ -205,6 +217,7 @@ You can request deletion of your personal data in certain circumstances, includi
   - All data from UserDefaults (wallet addresses, preferences)
 
 **User Control**: You can delete your wallet and all local app data at any time by:
+
 - Using the "Delete Wallet" function in the app settings
 - Uninstalling the app (removes all local data)
 
@@ -240,6 +253,7 @@ We will respond to your request within one month (GDPR Article 12(3)). We may re
 **IPFS Content**: Persists indefinitely on decentralized network; we cannot delete once uploaded.
 
 **Local Device Data**:
+
 - **iOS Keychain**: Retained until you delete the wallet or uninstall the app
 - **UserDefaults**: Retained until you clear app data or uninstall the app
 - **Uninstall**: Removing the app deletes all local data (Keychain and UserDefaults)
@@ -267,6 +281,7 @@ We ensure appropriate safeguards for international transfers through adequacy de
 ### 12.1 NFC Permissions
 
 The App requires NFC (Near Field Communication) access to:
+
 - Read data from NFC chips embedded in physical merchandise
 - Authenticate chip public keys for NFT operations
 - Read contract IDs and token information from chips
@@ -287,6 +302,7 @@ The App displays "Allow to scan tags" when requesting NFC access.
 ### 13.1 Keychain Storage
 
 Private keys are stored in iOS Keychain with the following security settings:
+
 - **Accessibility**: `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
 - **Encryption**: Encrypted by iOS using device-specific keys
 - **Device-Only**: Never synced to iCloud or other devices
@@ -295,6 +311,7 @@ Private keys are stored in iOS Keychain with the following security settings:
 ### 13.2 UserDefaults Storage
 
 App preferences are stored in UserDefaults (local device storage):
+
 - Wallet public addresses
 - Network selection (testnet/mainnet)
 - Contract ID preferences
@@ -305,6 +322,7 @@ App preferences are stored in UserDefaults (local device storage):
 ### 13.3 No Tracking or Analytics
 
 We do not use:
+
 - Analytics services
 - Tracking technologies
 - Third-party data collection
@@ -366,4 +384,3 @@ Managing Director: Pamphile Tupui Christophe Roy
 Email: legal@consulting-manao.com
 
 **Last Updated**: January 2026
-
