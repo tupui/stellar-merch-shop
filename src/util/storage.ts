@@ -50,6 +50,15 @@ class TypedStorage<T> {
     try {
       return JSON.parse(item) as T[U];
     } catch (error) {
+      // Handle legacy plain string values (backward compatibility)
+      // If JSON.parse fails and the value doesn't start with a quote,
+      // it's a legacy plain string (not JSON-encoded)
+      if (!item.startsWith('"')) {
+        // Migrate legacy plain string to JSON format
+        this.setItem(key, item as unknown as T[U]);
+        return item as unknown as T[U];
+      }
+
       switch (retrievalMode) {
         case "safe":
           return null;
