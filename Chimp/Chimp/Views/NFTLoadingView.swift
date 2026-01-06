@@ -19,33 +19,45 @@ struct NFTLoadingView: View {
     var body: some View {
         Group {
             if isLoading {
-                ProgressView("Loading NFT...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .progressViewStyle(CircularProgressViewStyle(tint: .chimpYellow))
+                    Text("Loading NFT...")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                .accessibilityLabel("Loading NFT")
             } else if let error = errorMessage {
                 VStack(spacing: 20) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 50))
                         .foregroundColor(.red)
+                        .accessibilityHidden(true)
                     
                     Text("Error")
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .accessibilityAddTraits(.isHeader)
                     
                     Text(error)
-                        .font(.system(size: 14))
+                        .font(.body)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
-                        .padding()
+                        .padding(.horizontal)
+                        .accessibilityLabel("Error: \(error)")
                     
                     Button("Close") {
                         isPresented = false
                     }
+                    .buttonStyle(PrimaryButtonStyle())
                     .padding(.horizontal, 40)
-                    .padding(.vertical, 12)
-                    .background(Color.chimpYellow)
-                    .foregroundColor(.black)
-                    .cornerRadius(8)
+                    .padding(.top, 8)
                 }
                 .padding()
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
             } else if let metadata = metadata {
                 NFTDisplayView(
                     metadata: metadata,
@@ -53,8 +65,11 @@ struct NFTLoadingView: View {
                     ownerAddress: ownerAddress,
                     isClaimed: isClaimed
                 )
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: isLoading)
+        .animation(.easeInOut(duration: 0.3), value: errorMessage)
         .onAppear {
             loadNFT()
         }

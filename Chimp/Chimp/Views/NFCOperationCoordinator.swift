@@ -52,7 +52,7 @@ class NFCOperationCoordinator: NSObject {
         }
         
         let session = NFCTagReaderSession(pollingOption: .iso14443, delegate: self, queue: nil)
-        session?.alertMessage = "Tap NFC chip to load NFT"
+        session?.alertMessage = "Hold your iPhone near the chip to view NFT"
         session?.begin()
         
         // Store completion for later
@@ -90,7 +90,7 @@ class NFCOperationCoordinator: NSObject {
             if success, let tag = tag, let session = session {
                 // Show loading state immediately
                 Task { @MainActor in
-                    session.alertMessage = "Processing claim... Please wait."
+                    session.alertMessage = "Preparing to claim NFT..."
                 }
                 
                 // Run blockchain operations on background thread
@@ -108,7 +108,7 @@ class NFCOperationCoordinator: NSObject {
                         
                         // Success - update UI on main thread
                         await MainActor.run {
-                            session.alertMessage = "Claim successful!"
+                            session.alertMessage = "NFT claimed successfully!"
                             completion(true, nil)
                             // Trigger callback with tokenId for NFT loading
                             self.onClaimSuccess?(claimResult.tokenId)
@@ -166,7 +166,7 @@ class NFCOperationCoordinator: NSObject {
             if success, let tag = tag, let session = session {
                 // Show loading state immediately
                 Task { @MainActor in
-                    session.alertMessage = "Processing transfer... Please wait."
+                    session.alertMessage = "Preparing to transfer NFT..."
                 }
                 
                 // Run blockchain operations on background thread
@@ -186,7 +186,7 @@ class NFCOperationCoordinator: NSObject {
                         
                         // Success - update UI on main thread
                         await MainActor.run {
-                            session.alertMessage = "Transfer successful!"
+                            session.alertMessage = "NFT transferred successfully!"
                             session.invalidate()
                             completion(true, nil)
                             self.onTransferSuccess?()
@@ -221,7 +221,7 @@ class NFCOperationCoordinator: NSObject {
         }
         
         let session = NFCTagReaderSession(pollingOption: .iso14443, delegate: self, queue: nil)
-        session?.alertMessage = "Tap NFC chip to sign message"
+        session?.alertMessage = "Hold your iPhone near the chip to sign message"
         session?.begin()
         
         // Store message and completion
@@ -261,7 +261,7 @@ class NFCOperationCoordinator: NSObject {
             if success, let tag = tag, let session = session {
                 // Show loading state immediately
                 Task { @MainActor in
-                    session.alertMessage = "Processing mint... Please wait."
+                    session.alertMessage = "Preparing to mint NFT..."
                 }
                 
                 // Run blockchain operations on background thread
@@ -279,7 +279,7 @@ class NFCOperationCoordinator: NSObject {
                         
                         // Success - update UI on main thread
                         await MainActor.run {
-                            session.alertMessage = "Mint successful!"
+                            session.alertMessage = "NFT minted successfully!"
                             completion(true, nil)
                             // Trigger callback with tokenId
                             self.onMintSuccess?(mintResult.tokenId)
@@ -434,7 +434,7 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
             
             // Update session message before blockchain operation
             await MainActor.run {
-                session.alertMessage = "Getting token ID from blockchain..."
+                session.alertMessage = "Reading chip information..."
             }
             
             // Get token ID (this needs to happen while session is active for proper flow)
@@ -442,7 +442,7 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
             
             // Close NFC session immediately after getting token ID
             await MainActor.run {
-                session.alertMessage = "Chip data read successfully"
+                session.alertMessage = "Chip information read successfully"
                 session.invalidate()
             }
             
@@ -531,7 +531,7 @@ extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
                 let derSignatureHex = derSignature.hexEncodedString()
                 
                 DispatchQueue.main.async {
-                    session.alertMessage = "Signature generated successfully"
+                    session.alertMessage = "Message signed successfully"
                     session.invalidate()
                     self.signMessageCompletion?(true, globalCounter, keyCounter, derSignatureHex)
                     // Trigger callback

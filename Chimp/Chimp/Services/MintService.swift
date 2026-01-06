@@ -55,7 +55,7 @@ final class MintService {
         Logger.logDebug("Wallet address: \(wallet.address)", category: .blockchain)
 
         // Step 1: Read chip public key
-        progressCallback?("Reading chip public key...")
+        progressCallback?("Reading chip information...")
         let chipPublicKey = try await ChipOperations.readChipPublicKey(tag: tag, session: session, keyIndex: keyIndex)
 
         // Convert hex string to Data (65 bytes, uncompressed)
@@ -74,7 +74,7 @@ final class MintService {
         Logger.logDebug("Source account: \(sourceKeyPair.accountId)", category: .blockchain)
 
         // Step 3: Get nonce from contract
-        progressCallback?("Getting nonce from contract...")
+        progressCallback?("Preparing transaction...")
         Logger.logDebug("Getting nonce for contract: \(config.contractId)", category: .blockchain)
         let currentNonce: UInt32
         do {
@@ -98,7 +98,7 @@ final class MintService {
         Logger.logDebug("Using nonce: \(nonce)", category: .blockchain)
 
         // Step 4: Create SEP-53 message
-        progressCallback?("Creating authentication message...")
+        progressCallback?("Preparing transaction...")
         let (message, messageHash) = try CryptoUtils.createSEP53Message(
             contractId: config.contractId,
             functionName: "mint",
@@ -112,7 +112,7 @@ final class MintService {
         Logger.logDebug("Message hash (hex): \(messageHash.map { String(format: "%02x", $0) }.joined())", category: .crypto)
 
         // Step 5: Sign with chip
-        progressCallback?("Signing with chip...")
+        progressCallback?("Signing transaction...")
         let signatureComponents = try await ChipOperations.signWithChip(
             tag: tag,
             session: session,
@@ -150,7 +150,7 @@ final class MintService {
         Logger.logDebug("Final signature (r+s, hex): \(signatureHex)", category: .crypto)
 
         // Step 8: Determine recovery ID offline
-        progressCallback?("Determining recovery ID...")
+        progressCallback?("Preparing transaction...")
         Logger.logDebug("Determining recovery ID offline...", category: .blockchain)
         let recoveryId: UInt32
         do {
@@ -201,7 +201,7 @@ final class MintService {
         try await walletService.signTransaction(transaction)
 
         // Step 11: Submit transaction
-        progressCallback?("Submitting transaction...")
+        progressCallback?("Processing on blockchain network...")
         let txHash: String
         do {
             txHash = try await blockchainService.submitTransaction(transaction, progressCallback: progressCallback)
@@ -216,7 +216,7 @@ final class MintService {
         }
 
         // Step 12: Update NDEF data on chip with token ID
-        progressCallback?("Updating chip data...")
+        progressCallback?("Completing operation...")
         do {
             let newUrl = "https://nft.chimpdao.xyz/\(config.contractId)/\(tokenId)"
             try await NDEFReader.writeNDEFUrl(tag: tag, session: session, url: newUrl)

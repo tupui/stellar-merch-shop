@@ -125,9 +125,11 @@ class HomeViewModel: ObservableObject {
     private func showConfetti(message: String) {
         confettiMessage = message
         showingConfetti = true
-        // Hide confetti after 3 seconds - no need for extra alert since NFC session already provided feedback
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-            self?.showingConfetti = false
+        // Hide confetti after 4 seconds - HIG recommends showing success feedback for 3-5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                self?.showingConfetti = false
+            }
         }
     }
     
@@ -135,6 +137,30 @@ class HomeViewModel: ObservableObject {
         errorTimeoutTimer?.invalidate()
         errorTimeoutTimer = nil
         errorMessage = nil
+    }
+    
+    // Get retry action for transient errors
+    func getRetryAction(for error: String) -> (() -> Void)? {
+        let lowercased = error.lowercased()
+        if lowercased.contains("network") || lowercased.contains("timeout") || lowercased.contains("failed to connect") {
+            // Determine which operation to retry based on context
+            // For now, return nil - can be enhanced to track last operation
+            return nil
+        }
+        return nil
+    }
+    
+    // Get check settings action for configuration errors
+    func getCheckSettingsAction(for error: String) -> (() -> Void)? {
+        let lowercased = error.lowercased()
+        if lowercased.contains("contract") || lowercased.contains("settings") || lowercased.contains("configuration") {
+            // This would need to be handled by the view to navigate to settings
+            // Return a placeholder that the view can use
+            return {
+                // View will handle navigation to settings
+            }
+        }
+        return nil
     }
     
     private func startErrorTimeout() {

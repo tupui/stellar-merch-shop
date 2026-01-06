@@ -5,26 +5,66 @@ struct TransferInputView: View {
     @State private var recipientAddress: String = ""
     @State private var tokenIdString: String = ""
     @State private var errorMessage: String?
+    @State private var showConfirmation = false
     
     let onTransfer: (String, UInt64) -> Void
     
+    private var isRecipientValid: Bool {
+        !recipientAddress.isEmpty && AppConfig.shared.validateStellarAddress(recipientAddress)
+    }
+    
+    private var isTokenIdValid: Bool {
+        !tokenIdString.isEmpty && UInt64(tokenIdString) != nil
+    }
+    
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text("Transfer Details")) {
-                    TextField("Recipient Stellar Address (G...)", text: $recipientAddress)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Recipient Stellar Address (G...)", text: $recipientAddress)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                            .accessibilityLabel("Recipient address")
+                            .accessibilityHint("Enter the Stellar address starting with G")
+                        
+                        if !recipientAddress.isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: isRecipientValid ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(isRecipientValid ? .green : .red)
+                                Text(isRecipientValid ? "Valid address" : "Invalid address format")
+                                    .font(.caption)
+                                    .foregroundColor(isRecipientValid ? .green : .red)
+                            }
+                        }
+                    }
                     
-                    TextField("Token ID", text: $tokenIdString)
-                        .keyboardType(.numberPad)
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Token ID", text: $tokenIdString)
+                            .keyboardType(.numberPad)
+                            .accessibilityLabel("Token ID")
+                            .accessibilityHint("Enter the numeric token ID to transfer")
+                        
+                        if !tokenIdString.isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: isTokenIdValid ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(isTokenIdValid ? .green : .red)
+                                Text(isTokenIdValid ? "Valid token ID" : "Invalid token ID")
+                                    .font(.caption)
+                                    .foregroundColor(isTokenIdValid ? .green : .red)
+                            }
+                        }
+                    }
                 }
                 
                 if let error = errorMessage {
                     Section {
                         Text(error)
                             .foregroundColor(.red)
-                            .font(.system(size: 14))
+                            .font(.subheadline)
+                            .accessibilityLabel("Error: \(error)")
                     }
                 }
             }
@@ -38,15 +78,23 @@ struct TransferInputView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Transfer") {
-                        transfer()
+                        validateAndShowConfirmation()
                     }
-                    .disabled(recipientAddress.isEmpty || tokenIdString.isEmpty)
+                    .disabled(!isRecipientValid || !isTokenIdValid)
                 }
+            }
+            .alert("Confirm Transfer", isPresented: $showConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Transfer", role: .destructive) {
+                    transfer()
+                }
+            } message: {
+                Text("You are about to transfer this NFT. This action cannot be undone.\n\nRecipient: \(recipientAddress)\nToken ID: \(tokenIdString)")
             }
         }
     }
     
-    private func transfer() {
+    private func validateAndShowConfirmation() {
         errorMessage = nil
         
         guard !recipientAddress.isEmpty else {
@@ -64,8 +112,17 @@ struct TransferInputView: View {
             return
         }
         
-        guard let tokenId = UInt64(tokenIdString) else {
+        guard let _ = UInt64(tokenIdString) else {
             errorMessage = "Please enter a valid token ID (numeric value)"
+            return
+        }
+        
+        showConfirmation = true
+    }
+    
+    private func transfer() {
+        guard let tokenId = UInt64(tokenIdString) else {
+            errorMessage = "Invalid token ID"
             return
         }
         

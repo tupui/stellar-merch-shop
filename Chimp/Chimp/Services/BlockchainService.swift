@@ -451,7 +451,7 @@ final class BlockchainService {
         // Compute transaction hash before sending (needed for polling)
         let hashString = try BlockchainHelpers.getTransactionHash(transaction)
         
-        progressCallback?("Sending transaction to network...")
+        progressCallback?("Sending transaction to blockchain network...")
         let sentTxResponse = await self.rpcClient.sendTransaction(transaction: transaction)
         
         let sentTx: SendTransactionResponse
@@ -526,7 +526,7 @@ final class BlockchainService {
         
         // Poll for transaction confirmation with exponential backoff (Stellar SDK best practice)
         Logger.logDebug("Polling for transaction confirmation...", category: .blockchain)
-        progressCallback?("Waiting for transaction confirmation...")
+            progressCallback?("Waiting for blockchain confirmation...")
         let maxAttempts = 10
         let maxPollingDuration: TimeInterval = 30.0 // Maximum 30 seconds total
         let initialDelay: TimeInterval = 0.5 // Start with 500ms
@@ -547,7 +547,7 @@ final class BlockchainService {
             // Exponential backoff: wait with increasing delay
             let delayNanoseconds = UInt64(currentDelay * 1_000_000_000)
             Logger.logDebug("Waiting \(String(format: "%.2f", currentDelay))s before attempt \(attempts + 1)/\(maxAttempts)...", category: .blockchain)
-            progressCallback?("Checking transaction status... (\(attempts + 1)/\(maxAttempts))")
+                progressCallback?("Confirming transaction... (\(attempts + 1)/\(maxAttempts))")
             try await Task.sleep(nanoseconds: delayNanoseconds)
             
             let txResponseEnum = await self.rpcClient.getTransaction(transactionHash: hashString)

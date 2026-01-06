@@ -1,25 +1,18 @@
 import SwiftUI
-import UIKit
 
-struct NFTDisplayView: UIViewControllerRepresentable {
+struct NFTDisplayView: View {
     let metadata: NFTMetadata
     let imageData: Data?
     let ownerAddress: String?
     let isClaimed: Bool
     
-    func makeUIViewController(context: Context) -> UINavigationController {
-        let nftView = NFTView()
-        nftView.displayNFT(
+    var body: some View {
+        NFTViewSwiftUI(
             metadata: metadata,
             imageData: imageData,
             ownerAddress: ownerAddress,
             isClaimed: isClaimed
         )
-        return UINavigationController(rootViewController: nftView)
-    }
-    
-    func updateUIViewController(_ uiViewController: UINavigationController, context: Context) {
-        // No updates needed
     }
 }
 

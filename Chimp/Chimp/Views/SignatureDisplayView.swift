@@ -8,7 +8,7 @@ struct SignatureDisplayView: View {
     @State private var copied = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 Color(.systemBackground)
                     .ignoresSafeArea()
@@ -16,8 +16,10 @@ struct SignatureDisplayView: View {
                 ScrollView {
                     VStack(spacing: 20) {
                         Text("Signature Generated")
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(.title3)
+                            .fontWeight(.semibold)
                             .padding(.top, 20)
+                            .accessibilityAddTraits(.isHeader)
                         
                         VStack(alignment: .leading, spacing: 16) {
                             InfoRow(title: "Global Counter:", value: String(globalCounter))
@@ -31,14 +33,12 @@ struct SignatureDisplayView: View {
                                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
                                 Text(copied ? "Copied!" : "Copy Signature")
                             }
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .background(Color.chimpYellow)
-                            .foregroundColor(.black)
-                            .cornerRadius(8)
                         }
+                        .buttonStyle(PrimaryButtonStyle())
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
+                        .accessibilityLabel(copied ? "Signature copied" : "Copy signature")
+                        .accessibilityHint("Copies the signature to your clipboard")
                     }
                     .padding(.vertical, 20)
                 }
@@ -78,11 +78,12 @@ struct InfoRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.subheadline)
+                .fontWeight(.semibold)
                 .foregroundColor(.secondary)
             
             Text(value)
-                .font(.system(size: 14, weight: .regular))
+                .font(.subheadline)
                 .foregroundColor(.primary)
                 .textSelection(.enabled)
         }

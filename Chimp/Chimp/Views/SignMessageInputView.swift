@@ -9,15 +9,34 @@ struct SignMessageInputView: View {
     let onSign: (Data) -> Void
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section(header: Text("Message to Sign")) {
-                    TextField("32-byte hex (64 chars) or any text message", text: $messageText)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("32-byte hex (64 chars) or any text message", text: $messageText)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                            .accessibilityLabel("Message to sign")
+                            .accessibilityHint("Enter a 32-byte hex value or any text message")
+                        
+                        if !messageText.isEmpty {
+                            let trimmedText = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let hexString = trimmedText.hasPrefix("0x") ? String(trimmedText.dropFirst(2)) : trimmedText
+                            let isHex = isValidHexString(hexString) && hexString.count == 64
+                            
+                            HStack(spacing: 4) {
+                                Image(systemName: isHex ? "checkmark.circle.fill" : "info.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(isHex ? .green : .blue)
+                                Text(isHex ? "32-byte hex value detected" : "Will be hashed with SHA256")
+                                    .font(.caption)
+                                    .foregroundColor(isHex ? .green : .blue)
+                            }
+                        }
+                    }
                     
                     Text("Enter a 32-byte hex value (64 characters) to sign directly, or any text message to hash with SHA256.")
-                        .font(.system(size: 13))
+                        .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.top, 4)
                 }
@@ -26,7 +45,8 @@ struct SignMessageInputView: View {
                     Section {
                         Text(error)
                             .foregroundColor(.red)
-                            .font(.system(size: 14))
+                            .font(.subheadline)
+                            .accessibilityLabel("Error: \(error)")
                     }
                 }
             }

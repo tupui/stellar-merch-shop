@@ -41,7 +41,7 @@ final class TransferService {
         }
 
         // Step 1: Read contract ID from chip's NDEF
-        progressCallback?("Reading chip data...")
+        progressCallback?("Reading chip information...")
         let ndefUrl = try await NDEFReader.readNDEFUrl(tag: tag, session: session)
         guard let ndefUrl = ndefUrl, let contractId = NDEFReader.parseContractIdFromNDEFUrl(ndefUrl) else {
             throw AppError.validation("Invalid contract ID in NFC chip")
@@ -69,7 +69,7 @@ final class TransferService {
         Logger.logDebug("Token ID: \(tokenId)", category: .blockchain)
 
         // Step 1: Read chip public key
-        progressCallback?("Reading chip public key...")
+        progressCallback?("Reading chip information...")
         let chipPublicKey = try await ChipOperations.readChipPublicKey(tag: tag, session: session, keyIndex: keyIndex)
 
         // Convert hex string to Data (65 bytes, uncompressed)
@@ -91,7 +91,7 @@ final class TransferService {
         Logger.logDebug("Validating that chip corresponds to token ID \(tokenId)", category: .blockchain)
         do {
             let expectedTokenId = try await blockchainService.getTokenId(
-                contractId: config.contractId,
+                contractId: contractId,
                 publicKey: publicKeyData,
                 sourceKeyPair: sourceKeyPair
             )
@@ -109,12 +109,12 @@ final class TransferService {
         }
 
         // Step 4: Get nonce from contract
-        progressCallback?("Getting nonce from contract...")
-        Logger.logDebug("Getting nonce for contract: \(config.contractId)", category: .blockchain)
+        progressCallback?("Preparing transaction...")
+        Logger.logDebug("Getting nonce for contract: \(contractId)", category: .blockchain)
         let currentNonce: UInt32
         do {
             currentNonce = try await blockchainService.getNonce(
-                contractId: config.contractId,
+                contractId: contractId,
                 publicKey: publicKeyData,
                 sourceKeyPair: sourceKeyPair
             )
@@ -133,9 +133,9 @@ final class TransferService {
         Logger.logDebug("Using nonce: \(nonce) (previous: \(currentNonce))", category: .blockchain)
 
         // Step 4: Create SEP-53 message
-        progressCallback?("Creating authentication message...")
+        progressCallback?("Preparing transaction...")
         let (message, messageHash) = try CryptoUtils.createSEP53Message(
-            contractId: config.contractId,
+            contractId: contractId,
             functionName: "transfer",
             args: [wallet.address, recipientAddress, String(tokenId)],
             nonce: nonce,
@@ -147,7 +147,7 @@ final class TransferService {
         Logger.logDebug("Message hash (hex): \(messageHash.map { String(format: "%02x", $0) }.joined())", category: .crypto)
 
         // Step 5: Sign with chip
-        progressCallback?("Signing with chip...")
+        progressCallback?("Signing transaction...")
         let signatureComponents = try await ChipOperations.signWithChip(
             tag: tag,
             session: session,
@@ -185,12 +185,12 @@ final class TransferService {
         Logger.logDebug("Final signature (r+s, hex): \(signatureHex)", category: .crypto)
 
         // Step 8: Determine recovery ID offline
-        progressCallback?("Determining recovery ID...")
+        progressCallback?("Preparing transaction...")
         Logger.logDebug("Determining recovery ID offline...", category: .blockchain)
         let recoveryId: UInt32
         do {
             recoveryId = try await blockchainService.determineRecoveryId(
-                contractId: config.contractId,
+                contractId: contractId,
                 claimant: wallet.address,
                 message: message,
                 signature: signature,
@@ -210,7 +210,7 @@ final class TransferService {
         let transaction: Transaction
         do {
             transaction = try await blockchainService.buildTransferTransaction(
-                contractId: config.contractId,
+                contractId: contractId,
                 from: wallet.address,
                 to: recipientAddress,
                 tokenId: tokenId,
@@ -239,7 +239,7 @@ final class TransferService {
         try await walletService.signTransaction(transaction)
 
         // Step 11: Submit transaction
-        progressCallback?("Submitting transaction...")
+        progressCallback?("Processing on blockchain network...")
         let txHash: String
         do {
             txHash = try await blockchainService.submitTransaction(transaction, progressCallback: progressCallback)

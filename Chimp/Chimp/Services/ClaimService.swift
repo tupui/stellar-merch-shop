@@ -38,7 +38,7 @@ final class ClaimService {
         }
 
         // Step 1: Read contract ID from chip's NDEF
-        progressCallback?("Reading chip data...")
+        progressCallback?("Reading chip information...")
         let ndefUrl = try await NDEFReader.readNDEFUrl(tag: tag, session: session)
         guard let ndefUrl = ndefUrl, let contractId = NDEFReader.parseContractIdFromNDEFUrl(ndefUrl) else {
             throw AppError.validation("Invalid contract ID in NFC chip")
@@ -58,7 +58,7 @@ final class ClaimService {
         Logger.logDebug("Wallet address: \(wallet.address)", category: .blockchain)
         
         // Step 1: Read chip public key
-        progressCallback?("Reading chip public key...")
+        progressCallback?("Reading chip information...")
         let chipPublicKey = try await ChipOperations.readChipPublicKey(tag: tag, session: session, keyIndex: keyIndex)
         
         // Convert hex string to Data (65 bytes, uncompressed)
@@ -77,12 +77,12 @@ final class ClaimService {
         Logger.logDebug("Source account: \(sourceKeyPair.accountId)", category: .blockchain)
         
         // Step 3: Get nonce from contract
-        progressCallback?("Getting nonce from contract...")
-        Logger.logDebug("Getting nonce for contract: \(config.contractId)", category: .blockchain)
+        progressCallback?("Preparing transaction...")
+        Logger.logDebug("Getting nonce for contract: \(contractId)", category: .blockchain)
         let currentNonce: UInt32
         do {
             currentNonce = try await blockchainService.getNonce(
-                contractId: config.contractId,
+                contractId: contractId,
                 publicKey: publicKeyData,
                 sourceKeyPair: sourceKeyPair
             )
@@ -101,9 +101,9 @@ final class ClaimService {
         Logger.logDebug("Using nonce: \(nonce) (previous: \(currentNonce))", category: .blockchain)
         
         // Step 4: Create SEP-53 message
-        progressCallback?("Creating authentication message...")
+        progressCallback?("Preparing transaction...")
         let (message, messageHash) = try CryptoUtils.createSEP53Message(
-            contractId: config.contractId,
+            contractId: contractId,
             functionName: "claim",
             args: [wallet.address],
             nonce: nonce,
@@ -115,7 +115,7 @@ final class ClaimService {
         Logger.logDebug("Message hash (hex): \(messageHash.map { String(format: "%02x", $0) }.joined())", category: .crypto)
         
         // Step 4: Sign with chip
-        progressCallback?("Signing with chip...")
+        progressCallback?("Signing transaction...")
         let signatureComponents = try await ChipOperations.signWithChip(
             tag: tag,
             session: session,
@@ -156,12 +156,12 @@ final class ClaimService {
         // Step 7: Determine recovery ID offline (matching JS determineRecoveryId)
         // This uses contract simulation to find the correct recovery ID before building the transaction
         // Note: Ideally this would use secp256k1 recovery (like JS @noble/secp256k1), but contract simulation works too
-        progressCallback?("Determining recovery ID...")
+        progressCallback?("Preparing transaction...")
         Logger.logDebug("Determining recovery ID offline...", category: .blockchain)
         let recoveryId: UInt32
         do {
             recoveryId = try await blockchainService.determineRecoveryId(
-                contractId: config.contractId,
+                contractId: contractId,
                 claimant: wallet.address,
                 message: message,
                 signature: signature,
@@ -181,7 +181,7 @@ final class ClaimService {
         let (transaction, tokenId): (Transaction, UInt64)
         do {
             (transaction, tokenId) = try await blockchainService.buildClaimTransaction(
-                contractId: config.contractId,
+                contractId: contractId,
                 claimant: wallet.address,
                 message: message,
                 signature: signature,
@@ -209,7 +209,7 @@ final class ClaimService {
         try await walletService.signTransaction(transaction)
 
         // Step 10: Submit transaction (send the signed transaction object directly, matching test script)
-        progressCallback?("Submitting transaction...")
+        progressCallback?("Processing on blockchain network...")
         let txHash: String
         do {
             txHash = try await blockchainService.submitTransaction(transaction, progressCallback: progressCallback)
@@ -224,9 +224,9 @@ final class ClaimService {
         }
 
         // Step 12: Update NDEF data on chip with token ID
-        progressCallback?("Updating chip data...")
+        progressCallback?("Completing operation...")
         do {
-            let newUrl = "https://nft.chimpdao.xyz/\(config.contractId)/\(tokenId)"
+            let newUrl = "https://nft.chimpdao.xyz/\(contractId)/\(tokenId)"
             try await NDEFReader.writeNDEFUrl(tag: tag, session: session, url: newUrl)
         } catch {
             Logger.logWarning("Failed to update NDEF data on chip: \(error)", category: .nfc)

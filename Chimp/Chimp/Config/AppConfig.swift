@@ -5,13 +5,14 @@
  */
 
 import Foundation
+import Combine
 
 enum AppNetwork: String {
     case testnet = "testnet"
     case mainnet = "mainnet"
 }
 
-final class AppConfig {
+final class AppConfig: ObservableObject {
     static let shared = AppConfig()
     
     private let networkKey = "app_network" // UserDefaults key for runtime override
@@ -24,7 +25,16 @@ final class AppConfig {
     private let buildContractIdMainnetKey = "STELLAR_CONTRACT_ID_MAINNET"
     private let buildAdminModeKey = "ADMIN_MODE"
     
-    private init() {}
+    @Published private var _isAdminMode: Bool = false
+    
+    private init() {
+        // Initialize isAdminMode from UserDefaults or default to false
+        if UserDefaults.standard.object(forKey: adminModeKey) != nil {
+            _isAdminMode = UserDefaults.standard.bool(forKey: adminModeKey)
+        } else {
+            _isAdminMode = false
+        }
+    }
     
     /// Current network setting
     /// First checks UserDefaults (runtime override), then build configuration
@@ -42,7 +52,7 @@ final class AppConfig {
                 return network
             }
             
-            return .testnet // Default to testnet
+            return .mainnet // Default to mainnet
         }
         set {
             // Store in UserDefaults for runtime override
@@ -149,24 +159,15 @@ final class AppConfig {
         return nil
     }
     
-    /// Admin mode flag - set via build configuration
-    /// First checks UserDefaults (runtime override), then build configuration
+    /// Admin mode flag - defaults to false (non-admin)
+    /// First checks UserDefaults (runtime override), then defaults to false
+    /// Build configuration is ignored to ensure non-admin is always the default
     var isAdminMode: Bool {
         get {
-            // Check for runtime override in UserDefaults
-            if UserDefaults.standard.object(forKey: adminModeKey) != nil {
-                return UserDefaults.standard.bool(forKey: adminModeKey)
-            }
-            
-            // Fall back to build configuration
-            if let buildAdminMode = Bundle.main.infoDictionary?[buildAdminModeKey] as? String {
-                let lowercased = buildAdminMode.lowercased()
-                return lowercased == "true" || lowercased == "1" || lowercased == "yes"
-            }
-            
-            return false // Default to regular user mode
+            return _isAdminMode
         }
         set {
+            _isAdminMode = newValue
             // Store in UserDefaults for runtime override
             UserDefaults.standard.set(newValue, forKey: adminModeKey)
         }

@@ -10,11 +10,19 @@ struct SettingsView: View {
     @State private var showResetAlert = false
     @State private var contractCopied = false
     @State private var saveStatus: String?
+    @State private var showHelp = false
+    @State private var isAdminMode: Bool = AppConfig.shared.isAdminMode
     @Environment(\.openURL) private var openURL
     
     private let walletService = WalletService()
     private var currentNetwork: AppNetwork {
         AppConfig.shared.currentNetwork
+    }
+    
+    private var config = AppConfig.shared
+    
+    init(walletState: WalletState) {
+        self.walletState = walletState
     }
     
     // Check if contract ID has been modified from original
@@ -30,11 +38,11 @@ struct SettingsView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
-                // Wallet Address Section
+                // Account Section
                 if let wallet = walletService.getStoredWallet() {
-                    Section(header: Text("Wallet")) {
+                    Section(header: Text("Account")) {
                         WalletAddressCard(
                             address: wallet.address,
                             network: currentNetwork
@@ -42,69 +50,128 @@ struct SettingsView: View {
                     }
                 }
                 
-                Section(header: Text("Smart Contract")) {
-                    TextField("Enter contract address", text: $contractId)
-                        .font(.system(size: 15, design: .monospaced))
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                    
-                    if hasChanges {
-                        Button(action: saveContractId) {
-                            HStack {
-                                if let status = saveStatus {
-                                    Label(status, systemImage: "checkmark")
-                                        .foregroundColor(.green)
-                                } else {
-                                    Text("Save")
+                // Admin Settings Section (only visible when admin mode is ON)
+                if isAdminMode {
+                    Section(header: Text("Admin Settings")) {
+                        // Network Configuration (admin only)
+                        Picker("Network", selection: Binding(
+                            get: { currentNetwork },
+                            set: { newNetwork in
+                                config.currentNetwork = newNetwork
+                            }
+                        )) {
+                            Text("Testnet").tag(AppNetwork.testnet)
+                            Text("Mainnet").tag(AppNetwork.mainnet)
+                        }
+                        .pickerStyle(.menu)
+                        .accessibilityLabel("Network selection")
+                        .accessibilityHint("Select between testnet and mainnet")
+                        
+                        // Contract Configuration
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Contract Address")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            TextField("C...", text: $contractId)
+                                .font(.system(.body, design: .monospaced))
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                                .accessibilityLabel("Contract address")
+                                .accessibilityHint("Enter the Stellar contract address starting with C")
+                        }
+                        
+                        if hasChanges {
+                            Button(action: saveContractId) {
+                                HStack {
+                                    if let status = saveStatus {
+                                        Label(status, systemImage: "checkmark")
+                                            .foregroundColor(.green)
+                                    } else {
+                                        Text("Save")
+                                    }
+                                    Spacer()
                                 }
+                            }
+                        }
+                        
+                        if !contractId.isEmpty {
+                            HStack(spacing: 12) {
+                                Button(action: copyContractId) {
+                                    Label("Copy", systemImage: contractCopied ? "checkmark" : "doc.on.doc")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(contractCopied ? .green : .chimpYellow)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Button(action: openContractStellarExpert) {
+                                    Label("View on Stellar.Expert", systemImage: "arrow.up.right.square")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundColor(.chimpYellow)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                
                                 Spacer()
                             }
                         }
-                    }
-                    
-                    if !contractId.isEmpty {
-                        HStack(spacing: 12) {
-                            Button(action: copyContractId) {
-                                Label("Copy", systemImage: contractCopied ? "checkmark" : "doc.on.doc")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(contractCopied ? .green : .chimpYellow)
+                        
+                        if !isAtDefault {
+                            Button(role: .destructive, action: { showResetAlert = true }) {
+                                Text("Reset Contract to Default")
                             }
-                            .buttonStyle(PlainButtonStyle())
-                            
-                            Button(action: openContractStellarExpert) {
-                                Label("View on Stellar.Expert", systemImage: "arrow.up.right.square")
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(.chimpYellow)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            
-                            Spacer()
                         }
                     }
                 }
                 
-                Section {
-                    Button(role: .destructive, action: { showResetAlert = true }) {
-                        Text("Reset to Default")
+                // Help & Support Section
+                Section(header: Text("Help & Support")) {
+                    Button(action: { showHelp = true }) {
+                        Label("Help & Support", systemImage: "questionmark.circle")
                     }
-                    .disabled(isAtDefault)
+                    .accessibilityLabel("Help and Support")
+                    .accessibilityHint("View help documentation and support information")
                 }
                 
-                Section {
-                    Button(action: { showLogoutAlert = true }) {
-                        Text("Logout")
-                            .foregroundColor(.red)
+                // Advanced Section
+                Section(header: Text("Advanced")) {
+                    Toggle(isOn: $isAdminMode) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Admin Mode")
+                                .font(.body)
+                            Text("Enable admin features like minting NFTs and configuring network settings")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
                     }
+                    .toggleStyle(.switch)
+                    .onChange(of: isAdminMode) { oldValue, newValue in
+                        config.isAdminMode = newValue
+                    }
+                    .accessibilityLabel("Admin Mode")
+                    .accessibilityHint("Toggle to enable or disable admin features")
+                }
+                
+                // Logout Section
+                Section {
+                    Button(role: .destructive, action: { showLogoutAlert = true }) {
+                        Text("Logout")
+                    }
+                    .accessibilityLabel("Logout")
+                    .accessibilityHint("Logs out and removes your private key from this device")
                 }
             }
             .navigationTitle("Settings")
+            .sheet(isPresented: $showHelp) {
+                NavigationStack {
+                    HelpView()
+                }
+            }
             .alert("Logout", isPresented: $showLogoutAlert) {
                 Button("Cancel", role: .cancel) {}
                 Button("Logout", role: .destructive) {
                     logout()
                 }
             } message: {
-                Text("Are you sure you want to logout? Your private key will be removed from this device.")
+                Text("Are you sure you want to logout? Your wallet will be disconnected and your private key will be removed from this device. You will need to enter your secret key again to reconnect.")
             }
             .alert("Reset to Default", isPresented: $showResetAlert) {
                 Button("Cancel", role: .cancel) {}
@@ -112,10 +179,11 @@ struct SettingsView: View {
                     resetToDefault()
                 }
             } message: {
-                Text("This will reset the contract address to the build configuration default. This action cannot be undone.")
+                Text("This will reset the contract address to the build configuration default. Any custom contract address you've entered will be lost. This action cannot be undone.")
             }
             .onAppear {
                 loadCurrentSettings()
+                isAdminMode = config.isAdminMode
             }
         }
     }

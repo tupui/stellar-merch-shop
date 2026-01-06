@@ -10,7 +10,7 @@ struct LoginView: View {
     private let walletService = WalletService()
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 Color.chimpBackground
                     .ignoresSafeArea()
@@ -23,22 +23,26 @@ struct LoginView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 100, height: 100)
-                        .padding(.bottom, 20)
+                        .padding(.bottom, 16)
+                        .accessibilityLabel("Chimp logo")
                     
                     // Title
                     Text("Welcome to Chimp")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
                         .foregroundColor(.primary)
+                        .accessibilityAddTraits(.isHeader)
                     
                     Text("Connect your Stellar wallet")
-                        .font(.system(size: 16, weight: .regular))
+                        .font(.body)
                         .foregroundColor(.secondary)
-                        .padding(.bottom, 40)
+                        .padding(.bottom, 32)
                     
                     // Secret Key Input
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Secret Key")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
                             .foregroundColor(.secondary)
                         
                         HStack {
@@ -58,6 +62,19 @@ struct LoginView: View {
                                 Image(systemName: isSecure ? "eye.slash.fill" : "eye.fill")
                                     .foregroundColor(.secondary)
                             }
+                            .accessibilityLabel(isSecure ? "Show secret key" : "Hide secret key")
+                        }
+                        
+                        if !secretKey.isEmpty {
+                            let isValid = secretKey.hasPrefix("S") && secretKey.count >= 56
+                            HStack(spacing: 4) {
+                                Image(systemName: isValid ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundColor(isValid ? .green : .orange)
+                                Text(isValid ? "Valid format" : "Should start with S and be 56 characters")
+                                    .font(.caption)
+                                    .foregroundColor(isValid ? .green : .orange)
+                            }
                         }
                     }
                     .padding(.horizontal, 20)
@@ -65,9 +82,11 @@ struct LoginView: View {
                     // Error Message
                     if let error = errorMessage {
                         Text(error)
-                            .font(.system(size: 14, weight: .regular))
+                            .font(.subheadline)
                             .foregroundColor(.red)
                             .padding(.horizontal, 20)
+                            .accessibilityLabel("Error: \(error)")
+                            .accessibilityAddTraits(.updatesFrequently)
                     }
                     
                     // Login Button
@@ -75,20 +94,17 @@ struct LoginView: View {
                         HStack {
                             if isLoading {
                                 ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .black))
                             } else {
                                 Text("Login")
-                                    .font(.system(size: 18, weight: .semibold))
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Color.chimpYellow)
-                        .foregroundColor(.black)
-                        .cornerRadius(12)
                     }
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(isLoading || secretKey.isEmpty)
                     .padding(.horizontal, 20)
+                    .accessibilityLabel(isLoading ? "Logging in" : "Login")
+                    .accessibilityHint("Connect your Stellar wallet with your secret key")
                     
                     Spacer()
                 }

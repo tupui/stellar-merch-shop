@@ -2,9 +2,10 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
+    @ObservedObject private var appConfig = AppConfig.shared
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 // Background with subtle pattern
                 Color.chimpBackground
@@ -15,34 +16,23 @@ struct HomeView: View {
                         // Header with logo
                         headerSection
                         
-                        VStack(spacing: 20) {
+                        VStack(spacing: 16) {
                             // Error message
                             if let error = viewModel.errorMessage {
-                                HStack(alignment: .center, spacing: 12) {
-                                    Text(error)
-                                        .font(.system(size: 14, weight: .regular))
-                                        .foregroundColor(.red)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                    
-                                    Button(action: {
+                                ErrorBanner(
+                                    error: error,
+                                    onDismiss: {
                                         viewModel.dismissError()
-                                    }) {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 20))
-                                            .foregroundColor(.red.opacity(0.7))
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color.red.opacity(0.1))
+                                    },
+                                    onRetry: nil, // Can be enhanced to track last operation
+                                    onCheckSettings: (error.lowercased().contains("contract") || error.lowercased().contains("settings")) ? {
+                                        // User can navigate to Settings tab manually
+                                        viewModel.dismissError()
+                                    } : nil
                                 )
                                 .padding(.horizontal, 20)
                                 .padding(.top, 16)
+                                .transition(.move(edge: .top).combined(with: .opacity))
                             }
                             
                             // Main action cards
@@ -50,7 +40,8 @@ struct HomeView: View {
                                 .padding(.horizontal, 20)
                                 .padding(.top, viewModel.errorMessage == nil ? 16 : 0)
                         }
-                        .padding(.bottom, 32)
+                        .animation(.easeInOut(duration: 0.3), value: viewModel.errorMessage)
+                        .padding(.bottom, 24)
                     }
                 }
                 .scrollBounceBehavior(.basedOnSize)
@@ -65,12 +56,15 @@ struct HomeView: View {
                 // Confetti overlay for success animations
                 if viewModel.showingConfetti {
                     ConfettiOverlay(message: viewModel.confettiMessage ?? "")
+                        .transition(.opacity)
+                        .zIndex(1000)
                 }
             }
+            .animation(.easeInOut(duration: 0.3), value: viewModel.showingConfetti)
             .sheet(isPresented: $viewModel.showingNFTView) {
                 if let contractId = viewModel.loadedNFTContractId,
                    let tokenId = viewModel.loadedNFTTokenId {
-                    NavigationView {
+                    NavigationStack {
                         NFTLoadingView(
                             contractId: contractId,
                             tokenId: tokenId,
@@ -117,40 +111,65 @@ struct HomeView: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 100, height: 100)
                 .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 8)
-                .padding(.top, 24)
-                .padding(.bottom, 24)
+                .padding(.top, 20)
+                .padding(.bottom, 20)
+                .accessibilityLabel("Chimp logo")
         }
     }
     
     private var actionCardsSection: some View {
         VStack(spacing: 16) {
+            // Empty state if contract ID not configured
+            if AppConfig.shared.contractId.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 50))
+                        .foregroundColor(.orange)
+                    
+                    Text("Contract Not Configured")
+                        .font(.headline)
+                    
+                    Text("Please set the contract address in Settings to use claim, transfer, and mint operations.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+                .padding(.vertical, 32)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(.systemGray6))
+                )
+            }
+            
             // Load NFT Card
             ActionCard(
                 icon: "photo.fill",
                 title: "Load NFT",
-                description: "Scan an NFC chip to view its NFT",
+                description: "Hold your iPhone near an NFC chip to view its NFT details and metadata",
                 color: .blue,
                 action: {
                     viewModel.loadNFT()
                 }
             )
             
-            // Claim NFT Card
+            // Claim NFT Card (reads contract ID from chip NDEF)
             ActionCard(
                 icon: "hand.raised.fill",
                 title: "Claim NFT",
-                description: "Claim ownership of an unclaimed NFT",
+                description: "Claim ownership of an unclaimed NFT by holding your iPhone near the chip",
                 color: .purple,
                 action: {
                     viewModel.claimNFT()
                 }
             )
             
-            // Transfer NFT Card
+            // Transfer NFT Card (reads contract ID from chip NDEF)
             ActionCard(
                 icon: "arrow.right.circle.fill",
                 title: "Transfer NFT",
-                description: "Transfer an NFT to another address",
+                description: "Transfer an NFT to another Stellar address. You'll need the recipient address and token ID",
                 color: .orange,
                 action: {
                     viewModel.transferNFT()
@@ -161,19 +180,19 @@ struct HomeView: View {
             ActionCard(
                 icon: "signature",
                 title: "Sign Message",
-                description: "Sign a message with your NFC chip",
+                description: "Sign a message or 32-byte hex value using your NFC chip's private key",
                 color: .green,
                 action: {
                     viewModel.signMessage()
                 }
             )
             
-            // Mint NFT Card (Admin only)
-            if AppConfig.shared.isAdminMode {
+            // Mint NFT Card (Admin only, requires contract ID)
+            if appConfig.isAdminMode && !appConfig.contractId.isEmpty {
                 ActionCard(
                     icon: "sparkles",
                     title: "Mint NFT",
-                    description: "Initialize and mint a new NFT",
+                    description: "Initialize and mint a new NFT. Hold your iPhone near the chip to begin",
                     color: .indigo,
                     action: {
                         viewModel.mintNFT()
