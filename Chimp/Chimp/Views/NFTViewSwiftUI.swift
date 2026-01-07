@@ -9,6 +9,16 @@ struct NFTViewSwiftUI: View {
     let contractId: String
     let tokenId: UInt64
     
+    private let walletService = WalletService.shared
+    
+    private var isOwnedByCurrentUser: Bool {
+        guard let ownerAddress = ownerAddress,
+              let currentWallet = walletService.getStoredWallet() else {
+            return false
+        }
+        return ownerAddress == currentWallet.address
+    }
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
@@ -87,16 +97,43 @@ struct NFTViewSwiftUI: View {
     private var ownerStatusView: some View {
         if isClaimed {
             if let ownerAddress = ownerAddress {
-                HStack {
-                    Text("Owner:")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Text(ownerAddress)
-                        .font(.subheadline)
-                        .foregroundColor(.blue)
-                        .textSelection(.enabled)
+                if isOwnedByCurrentUser {
+                    // Special styling for NFTs owned by current user
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.title3)
+                                .foregroundColor(.green)
+                            Text("You own this NFT")
+                                .font(.headline)
+                                .foregroundColor(.green)
+                        }
+                        
+                        Text(ownerAddress)
+                            .font(.custom("SFMono-Regular", size: 11))
+                            .foregroundColor(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.green.opacity(0.1))
+                    )
+                    .accessibilityLabel("You own this NFT. Address: \(ownerAddress)")
+                } else {
+                    // Different owner
+                    HStack {
+                        Text("Owner:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text(ownerAddress)
+                            .font(.custom("SFMono-Regular", size: 14))
+                            .foregroundColor(.blue)
+                            .textSelection(.enabled)
+                    }
+                    .accessibilityLabel("Owner: \(ownerAddress)")
                 }
-                .accessibilityLabel("Owner: \(ownerAddress)")
             } else {
                 HStack {
                     Text("Owner:")

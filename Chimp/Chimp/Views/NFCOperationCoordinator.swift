@@ -107,16 +107,10 @@ class NFCOperationCoordinator: NSObject {
                         // Success - update UI on main thread
                         await MainActor.run {
                             session.alertMessage = "NFT claimed successfully!"
+                            session.invalidate()
                             completion(true, nil)
                             // Trigger callback with tokenId for NFT loading
                             self.onClaimSuccess?(claimResult.tokenId)
-                        }
-                        
-                        // Brief delay before dismissing NFC session
-                        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                        
-                        await MainActor.run {
-                            session.invalidate()
                             self.claimNFCHelper = nil
                         }
                     } catch {
@@ -248,15 +242,9 @@ class NFCOperationCoordinator: NSObject {
                         // Success - update UI on main thread
                         await MainActor.run {
                             session.alertMessage = "NFT transferred successfully!"
+                            session.invalidate()
                             completion(true, nil)
                             self.onTransferSuccess?()
-                        }
-                        
-                        // Brief delay before dismissing NFC session
-                        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                        
-                        await MainActor.run {
-                            session.invalidate()
                             self.transferNFCHelper = nil
                         }
                     } catch {
@@ -347,16 +335,10 @@ class NFCOperationCoordinator: NSObject {
                         // Success - update UI on main thread
                         await MainActor.run {
                             session.alertMessage = "NFT minted successfully!"
+                            session.invalidate()
                             completion(true, nil)
                             // Trigger callback with tokenId
                             self.onMintSuccess?(mintResult.tokenId)
-                        }
-                        
-                        // Brief delay before dismissing NFC session
-                        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-                        
-                        await MainActor.run {
-                            session.invalidate()
                             self.mintNFCHelper = nil
                         }
                     } catch {

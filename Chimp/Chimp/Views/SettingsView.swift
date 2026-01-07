@@ -70,7 +70,7 @@ struct SettingsView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                             TextField("C...", text: $contractId)
-                                .font(.system(.body, design: .monospaced))
+                                .font(.custom("SFMono-Regular", size: 14))
                                 .autocapitalization(.none)
                                 .disableAutocorrection(true)
                                 .accessibilityLabel("Contract address")

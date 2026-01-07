@@ -16,7 +16,7 @@ struct WalletAddressCard: View {
             }
             
             Text(address)
-                .font(.system(.subheadline, design: .monospaced))
+                .font(.custom("SFMono-Regular", size: 14))
                 .foregroundColor(.primary)
                 .textSelection(.enabled)
             

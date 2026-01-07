@@ -84,8 +84,9 @@ class HomeViewModel: ObservableObject {
         
         nfcCoordinator.onTransferSuccess = { [weak self] in
             DispatchQueue.main.async {
-                // NFC session already showed success message, no need for extra alert
+                // Reset coordinator state and show confetti
                 self?.nfcCoordinator.resetState()
+                self?.showConfetti(message: "Transfer successful!")
             }
         }
         

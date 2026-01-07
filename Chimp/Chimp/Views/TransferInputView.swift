@@ -31,6 +31,7 @@ struct TransferInputView: View {
                 Section(header: Text("Transfer Details")) {
                     VStack(alignment: .leading, spacing: 4) {
                         TextField("Recipient Stellar Address (G...)", text: $recipientAddress)
+                            .font(.custom("SFMono-Regular", size: 14))
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
                             .accessibilityLabel("Recipient address")
