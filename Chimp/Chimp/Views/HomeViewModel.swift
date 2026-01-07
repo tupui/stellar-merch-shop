@@ -30,7 +30,6 @@ class HomeViewModel: ObservableObject {
     @Published var showingSignatureView = false
     @Published var signatureData: (globalCounter: UInt32, keyCounter: UInt32, derSignature: String)?
     @Published var showingConfetti = false
-    @Published var confettiMessage: String?
     
     // Operation coordinator will handle the actual NFC operations
     let nfcCoordinator = NFCOperationCoordinator()
@@ -125,11 +124,10 @@ class HomeViewModel: ObservableObject {
         }
     }
     
-    private func showConfetti(message: String) {
-        confettiMessage = message
+    private func showConfetti(message: String = "") {
         showingConfetti = true
-        // Hide confetti after 4 seconds - HIG recommends showing success feedback for 3-5 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+        // Hide confetti after 3 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
             withAnimation(.easeInOut(duration: 0.3)) {
                 self?.showingConfetti = false
             }

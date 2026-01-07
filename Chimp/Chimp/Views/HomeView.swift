@@ -44,7 +44,7 @@ struct HomeView: View {
             .overlay {
                 // Confetti overlay for success animations
                 if viewModel.showingConfetti {
-                    ConfettiOverlay(message: viewModel.confettiMessage ?? "")
+                    ConfettiOverlay()
                         .transition(.opacity)
                         .zIndex(1000)
                 }
@@ -113,30 +113,30 @@ struct HomeView: View {
     
     private var actionCardsSection: some View {
         VStack(spacing: 16) {
-            // Claim NFT Card (reads contract ID from chip NDEF)
+            // Claim (reads contract ID from chip NDEF)
             ActionCard(
                 icon: "hand.raised.fill",
-                title: "Claim NFT",
+                title: "Claim",
                 color: .purple,
                 action: {
                     viewModel.claimNFT()
                 }
             )
             
-            // Load NFT Card
+            // Load
             ActionCard(
                 icon: "photo.fill",
-                title: "Load NFT",
+                title: "Load",
                 color: .blue,
                 action: {
                     viewModel.loadNFT()
                 }
             )
             
-            // Transfer NFT Card (reads contract ID and token ID from chip NDEF)
+            // Transfer (reads contract ID and token ID from chip NDEF)
             ActionCard(
                 icon: "arrow.right.circle.fill",
-                title: "Transfer NFT",
+                title: "Transfer",
                 color: .orange,
                 action: {
                     viewModel.transferNFT()
@@ -147,7 +147,7 @@ struct HomeView: View {
             if appConfig.isAdminMode {
                 ActionCard(
                     icon: "signature",
-                    title: "Sign Message",
+                    title: "Sign",
                     color: .green,
                     action: {
                         viewModel.signMessage()
@@ -155,11 +155,11 @@ struct HomeView: View {
                 )
             }
             
-            // Mint NFT Card (Admin only, requires contract ID)
+            // Mint Card (Admin only, requires contract ID)
             if appConfig.isAdminMode && !appConfig.contractId.isEmpty {
                 ActionCard(
                     icon: "sparkles",
-                    title: "Mint NFT",
+                    title: "Mint",
                     color: .indigo,
                     action: {
                         viewModel.mintNFT()

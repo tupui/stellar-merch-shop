@@ -9,6 +9,9 @@ struct NFTViewSwiftUI: View {
     let contractId: String
     let tokenId: UInt64
     
+    @State private var showingShareOptions = false
+    @Environment(\.openURL) private var openURL
+    
     private let walletService = WalletService.shared
     
     private var isOwnedByCurrentUser: Bool {
@@ -17,6 +20,25 @@ struct NFTViewSwiftUI: View {
             return false
         }
         return ownerAddress == currentWallet.address
+    }
+    
+    private var nftURL: URL {
+        URL(string: "https://nft.chimpdao.xyz/\(contractId)/\(tokenId)")!
+    }
+    
+    private var shareMessage: String {
+        let name = metadata.name ?? "my collectible"
+        return "Check out \(name) on Stellar Merch Shop! \(nftURL.absoluteString)"
+    }
+    
+    private var twitterShareURL: URL {
+        let text = shareMessage.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return URL(string: "https://twitter.com/intent/tweet?text=\(text)")!
+    }
+    
+    private var telegramShareURL: URL {
+        let text = shareMessage.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return URL(string: "https://t.me/share/url?url=\(nftURL.absoluteString)&text=\(text)")!
     }
     
     var body: some View {
@@ -78,19 +100,36 @@ struct NFTViewSwiftUI: View {
                 Spacer(minLength: 20)
             }
         }
-        .navigationTitle("NFT Details")
+        .navigationTitle("Details")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                ShareLink(item: nftURL) {
-                    Label("Share", systemImage: "square.and.arrow.up")
+                Button {
+                    showingShareOptions = true
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
                 }
             }
         }
-    }
-    
-    private var nftURL: URL {
-        URL(string: "https://nft.chimpdao.xyz/\(contractId)/\(tokenId)")!
+        .confirmationDialog("Share", isPresented: $showingShareOptions, titleVisibility: .hidden) {
+            Button {
+                openURL(twitterShareURL)
+            } label: {
+                Label("Share on X", systemImage: "xmark")
+            }
+            
+            Button {
+                openURL(telegramShareURL)
+            } label: {
+                Label("Share on Telegram", systemImage: "paperplane.fill")
+            }
+            
+            ShareLink(item: nftURL, message: Text(shareMessage)) {
+                Label("More Options", systemImage: "ellipsis")
+            }
+            
+            Button("Cancel", role: .cancel) {}
+        }
     }
     
     @ViewBuilder
@@ -180,4 +219,6 @@ struct AttributeRow: View {
         .accessibilityLabel("\(attribute.trait_type): \(attribute.value)")
     }
 }
+
+
 

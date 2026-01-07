@@ -543,30 +543,20 @@ final class BlockchainService {
             throw AppError.blockchain(.transactionRejected("Failed to send transaction: \(error.localizedDescription)"))
         }
         
-        // Poll for transaction confirmation with exponential backoff (Stellar SDK best practice)
+        // Poll for transaction confirmation: initial 2s wait, then 1s intervals
         Logger.logDebug("Polling for transaction confirmation...", category: .blockchain)
-            progressCallback?("Waiting for blockchain confirmation...")
-        let maxAttempts = 10
-        let maxPollingDuration: TimeInterval = 30.0 // Maximum 30 seconds total
-        let initialDelay: TimeInterval = 0.5 // Start with 500ms
-        let maxDelay: TimeInterval = 3.0 // Cap at 3 seconds
+        progressCallback?("Waiting for blockchain confirmation...")
+        let maxAttempts = 30 // 30 attempts max
+        let initialDelay: TimeInterval = 2.0 // Initial 2 second wait
+        let pollInterval: TimeInterval = 1.0 // Then check every 1 second
         var attempts = 0
-        var currentDelay = initialDelay
-        let startTime = Date()
         
         while attempts < maxAttempts {
-            // Check if we've exceeded maximum polling duration
-            let elapsed = Date().timeIntervalSince(startTime)
-            if elapsed > maxPollingDuration {
-                Logger.logWarning("Transaction polling exceeded maximum duration (\(maxPollingDuration)s)", category: .blockchain)
-                progressCallback?("Transaction confirmation timed out")
-                throw AppError.blockchain(.transactionTimeout)
-            }
-            
-            // Exponential backoff: wait with increasing delay
-            let delayNanoseconds = UInt64(currentDelay * 1_000_000_000)
-            Logger.logDebug("Waiting \(String(format: "%.2f", currentDelay))s before attempt \(attempts + 1)/\(maxAttempts)...", category: .blockchain)
-                progressCallback?("Confirming transaction... (\(attempts + 1)/\(maxAttempts))")
+            // Wait before checking (2s initial, then 1s)
+            let delay = attempts == 0 ? initialDelay : pollInterval
+            let delayNanoseconds = UInt64(delay * 1_000_000_000)
+            Logger.logDebug("Waiting \(String(format: "%.1f", delay))s before attempt \(attempts + 1)/\(maxAttempts)...", category: .blockchain)
+            progressCallback?("Confirming transaction...")
             try await Task.sleep(nanoseconds: delayNanoseconds)
             
             let txResponseEnum = await self.rpcClient.getTransaction(transactionHash: hashString)
@@ -595,15 +585,11 @@ final class BlockchainService {
                 } else {
                     // Transaction still pending, continue polling
                     attempts += 1
-                    // Exponential backoff: double the delay, capped at maxDelay
-                    currentDelay = min(currentDelay * 2.0, maxDelay)
                     continue
                 }
             case .failure(let error):
                 Logger.logWarning("Error getting transaction (attempt \(attempts + 1)/\(maxAttempts)): \(error)", category: .blockchain)
                 attempts += 1
-                // Exponential backoff: double the delay, capped at maxDelay
-                currentDelay = min(currentDelay * 2.0, maxDelay)
                 continue
             }
         }
