@@ -44,7 +44,6 @@ final class SecureKeyStorage {
         return ctx
     }
 
-    /// Internal helper to load the key using a prepared LAContext (avoids creating new contexts repeatedly).
     private func loadPrivateKey(using context: LAContext) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -78,10 +77,8 @@ final class SecureKeyStorage {
             throw AppError.secureStorage(.storageFailed("Invalid key data format"))
         }
         
-        // Clear cached context BEFORE storing new key to prevent stale context reuse
         SecureKeyStorage.cachedContext = nil
         
-        // Delete existing key if present
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -89,8 +86,6 @@ final class SecureKeyStorage {
         ]
         SecItemDelete(deleteQuery as CFDictionary)
         
-        // Create access control requiring biometric authentication
-        // .biometryCurrentSet invalidates the key if biometrics are changed
         var error: Unmanaged<CFError>?
         guard let accessControl = SecAccessControlCreateWithFlags(
             nil,
@@ -102,7 +97,6 @@ final class SecureKeyStorage {
             throw AppError.secureStorage(.storageFailed(errorMessage))
         }
         
-        // Add new key with biometric protection
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -116,49 +110,6 @@ final class SecureKeyStorage {
             let errorMessage = keychainErrorMessage(for: status)
             throw AppError.secureStorage(.storageFailed(errorMessage))
         }
-    }
-    
-    /// Legacy method kept for backward compatibility within the service. Prefer `withPrivateKey`.
-    @available(*, deprecated, message: "Use withPrivateKey(reason:_:) instead to avoid multiple prompts")
-    func loadPrivateKey() throws -> String? {
-        // Create LAContext for biometric prompt customization
-        let context = LAContext()
-        context.localizedReason = "Authenticate to access your wallet"
-        
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationContext as String: context
-        ]
-        
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        
-        if status == errSecItemNotFound {
-            return nil
-        }
-        
-        // Handle user cancellation gracefully
-        if status == errSecUserCanceled {
-            throw AppError.secureStorage(.authenticationRequired)
-        }
-        
-        // Handle biometric authentication failure
-        if status == errSecAuthFailed {
-            throw AppError.secureStorage(.authenticationRequired)
-        }
-        
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let secretKey = String(data: data, encoding: .utf8) else {
-            let errorMessage = keychainErrorMessage(for: status)
-            throw AppError.secureStorage(.retrievalFailed(errorMessage))
-        }
-        
-        return secretKey
     }
     
     /// Delete stored private key
@@ -176,20 +127,14 @@ final class SecureKeyStorage {
             throw AppError.secureStorage(.deletionFailed(errorMessage))
         }
         
-        // Clear cached context after successful deletion
         SecureKeyStorage.cachedContext = nil
     }
     
-    /// Clear the cached authentication context
-    /// Call this when replacing keys or on logout to ensure no stale context remains
     static func clearCachedContext() {
         cachedContext = nil
     }
     
-    /// Check if a private key is stored (does not require authentication)
-    /// - Returns: true if key exists, false otherwise
     func hasStoredKey() -> Bool {
-        // Use LAContext with interactionNotAllowed to check existence without prompting
         let context = LAContext()
         context.interactionNotAllowed = true
         
@@ -201,7 +146,6 @@ final class SecureKeyStorage {
         ]
         
         let status = SecItemCopyMatching(query as CFDictionary, nil)
-        // Key exists if we get success or auth would be required
         return status == errSecSuccess || status == errSecInteractionNotAllowed
     }
     

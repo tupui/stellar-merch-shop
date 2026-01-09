@@ -46,33 +46,23 @@ final class WalletService {
             throw AppError.validation("Failed to create key pair from secret key: \(error.localizedDescription)")
         }
         
-        // Get public key/address
         let address = keyPair.accountId
         
-        // Clear old address from UserDefaults completely
         UserDefaults.standard.removeObject(forKey: addressKey)
-        
-        // Verify old address is removed (retry if needed)
         if UserDefaults.standard.string(forKey: addressKey) != nil {
             UserDefaults.standard.removeObject(forKey: addressKey)
         }
         
-        // Store private key in keychain (this also clears cached context)
         do {
             try secureKeyStorage.storePrivateKey(trimmedKey)
         } catch {
-            // If key storage fails, ensure address is not stored
             UserDefaults.standard.removeObject(forKey: addressKey)
             throw AppError.secureStorage(.storageFailed("Failed to store wallet securely"))
         }
         
-        // Store public address in UserDefaults AFTER successful key storage
         UserDefaults.standard.set(address, forKey: addressKey)
-        
-        // Verify address was stored correctly
         let storedAddress = UserDefaults.standard.string(forKey: addressKey)
         if storedAddress != address {
-            // Retry storage if verification failed
             UserDefaults.standard.set(address, forKey: addressKey)
         }
         
@@ -85,16 +75,11 @@ final class WalletService {
     /// Get stored wallet info (if any)
     /// - Returns: WalletConnection if wallet is stored, nil otherwise
     func getStoredWallet() -> WalletConnection? {
-        // Check if keychain has a key - this is the source of truth
-        // This check doesn't require biometric authentication
         guard secureKeyStorage.hasStoredKey() else {
-            // If no key in keychain, clear any stale address from UserDefaults
             UserDefaults.standard.removeObject(forKey: addressKey)
             return nil
         }
         
-        // Return address from UserDefaults
-        // We trust it's correct since it's stored together with the key during login
         guard let address = UserDefaults.standard.string(forKey: addressKey),
               !address.isEmpty else {
             return nil
@@ -116,17 +101,12 @@ final class WalletService {
         
         Logger.logDebug("Validating transaction before signing...", category: .blockchain)
         
-        // Validate transaction has required operations
         guard !transaction.operations.isEmpty else {
             Logger.logError("Transaction has no operations", category: .blockchain)
             throw AppError.wallet(.signingFailed("Transaction signing failed"))
         }
         Logger.logDebug("Transaction has \(transaction.operations.count) operation(s)", category: .blockchain)
         
-        // Note: Time bounds and fee validation are already done in buildClaimTransaction
-        // We just validate basic transaction state here
-        
-        // Validate transaction fee (minimum 100 stroops per operation)
         let minFeePerOperation: Int64 = 100
         let requiredMinFee = minFeePerOperation * Int64(transaction.operations.count)
         if transaction.fee < requiredMinFee {
@@ -134,11 +114,6 @@ final class WalletService {
             throw AppError.wallet(.signingFailed("Transaction signing failed"))
         }
         Logger.logDebug("Transaction fee validated: \(transaction.fee) stroops (minimum: \(requiredMinFee))", category: .blockchain)
-        
-        // Validate source account matches wallet (if we can access it)
-        // Note: Transaction.sourceAccount is a protocol, so we can't directly compare
-        // The transaction was built with the correct source account, so we trust it
-        Logger.logDebug("Source account validation skipped (transaction built with correct account)", category: .blockchain)
         
         Logger.logDebug("Transaction validation passed, signing...", category: .blockchain)
         
@@ -161,8 +136,6 @@ final class WalletService {
         try secureKeyStorage.deletePrivateKey()
         SecureKeyStorage.clearCachedContext()
         UserDefaults.standard.removeObject(forKey: addressKey)
-        
-        // Verify address was cleared (retry if needed)
         if UserDefaults.standard.string(forKey: addressKey) != nil {
             UserDefaults.standard.removeObject(forKey: addressKey)
         }
