@@ -47,80 +47,61 @@ class HomeViewModel: ObservableObject {
     
     private func setupCoordinatorCallbacks() {
         nfcCoordinator.onLoadNFTSuccess = { [weak self] contractId, tokenId in
-            DispatchQueue.main.async {
+            // self is @MainActor, so property access automatically hops to main actor
+            self?.loadedNFTContractId = contractId
+            self?.loadedNFTTokenId = tokenId
+            self?.showingNFTView = true
+        }
+        
+        nfcCoordinator.onLoadNFTError = { [weak self] error in
+            self?.errorMessage = error
+        }
+        
+        nfcCoordinator.onClaimSuccess = { [weak self] tokenId, contractId in
+            // Reset coordinator state first to ensure clean state
+            self?.nfcCoordinator.resetState()
+            // Show confetti briefly, then load NFT
+            self?.showConfetti(message: "Claim successful!")
+            // After confetti, load the NFT using contract ID from chip
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
                 self?.loadedNFTContractId = contractId
                 self?.loadedNFTTokenId = tokenId
                 self?.showingNFTView = true
             }
         }
         
-        nfcCoordinator.onLoadNFTError = { [weak self] error in
-            DispatchQueue.main.async {
-                self?.errorMessage = error
-            }
-        }
-        
-        nfcCoordinator.onClaimSuccess = { [weak self] tokenId, contractId in
-            DispatchQueue.main.async {
-                // Reset coordinator state first to ensure clean state
-                self?.nfcCoordinator.resetState()
-                // Show confetti briefly, then load NFT
-                self?.showConfetti(message: "Claim successful!")
-                // After confetti, load the NFT using contract ID from chip
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                    self?.loadedNFTContractId = contractId
-                    self?.loadedNFTTokenId = tokenId
-                    self?.showingNFTView = true
-                }
-            }
-        }
-        
         nfcCoordinator.onClaimError = { [weak self] error in
-            DispatchQueue.main.async {
-                self?.errorMessage = error
-            }
+            self?.errorMessage = error
         }
         
         nfcCoordinator.onTransferSuccess = { [weak self] in
-            DispatchQueue.main.async {
-                // Reset coordinator state and show confetti
-                self?.nfcCoordinator.resetState()
-                self?.showConfetti(message: "Transfer successful!")
-            }
+            // Reset coordinator state and show confetti
+            self?.nfcCoordinator.resetState()
+            self?.showConfetti(message: "Transfer successful!")
         }
         
         nfcCoordinator.onTransferError = { [weak self] error in
-            DispatchQueue.main.async {
-                self?.errorMessage = error
-            }
+            self?.errorMessage = error
         }
         
         nfcCoordinator.onSignSuccess = { [weak self] globalCounter, keyCounter, signature in
-            DispatchQueue.main.async {
-                self?.signatureData = (globalCounter: globalCounter, keyCounter: keyCounter, derSignature: signature)
-                self?.showingSignatureView = true
-            }
+            self?.signatureData = (globalCounter: globalCounter, keyCounter: keyCounter, derSignature: signature)
+            self?.showingSignatureView = true
         }
         
         nfcCoordinator.onSignError = { [weak self] error in
-            DispatchQueue.main.async {
-                self?.errorMessage = error
-            }
+            self?.errorMessage = error
         }
         
         nfcCoordinator.onMintSuccess = { [weak self] tokenId in
-            DispatchQueue.main.async {
-                // Reset coordinator state first to ensure clean state
-                self?.nfcCoordinator.resetState()
-                // Show confetti briefly - no need for extra alert since NFC session already showed success
-                self?.showConfetti(message: "Mint successful! Token ID: \(tokenId)")
-            }
+            // Reset coordinator state first to ensure clean state
+            self?.nfcCoordinator.resetState()
+            // Show confetti briefly - no need for extra alert since NFC session already showed success
+            self?.showConfetti(message: "Mint successful! Token ID: \(tokenId)")
         }
         
         nfcCoordinator.onMintError = { [weak self] error in
-            DispatchQueue.main.async {
-                self?.errorMessage = error
-            }
+            self?.errorMessage = error
         }
     }
     
@@ -169,11 +150,9 @@ class HomeViewModel: ObservableObject {
         errorMessage = nil
         
         nfcCoordinator.loadNFT { [weak self] success, error in
-            DispatchQueue.main.async {
-                self?.isLoading = false
-                if let error = error {
-                    self?.errorMessage = error
-                }
+            self?.isLoading = false
+            if let error = error {
+                self?.errorMessage = error
             }
         }
     }

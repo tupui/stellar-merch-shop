@@ -10,6 +10,7 @@ struct NFTLoadingView: View {
     @State private var isClaimed: Bool = true
     @State private var isLoading: Bool = true
     @State private var errorMessage: String?
+    @State private var loadTask: Task<Void, Never>?
     
     private let blockchainService = BlockchainService()
     private let ipfsService = IPFSService()
@@ -79,10 +80,15 @@ struct NFTLoadingView: View {
         .onAppear {
             loadNFT()
         }
+        .onDisappear {
+            loadTask?.cancel()
+            loadTask = nil
+        }
     }
     
     private func loadNFT() {
-        Task {
+        loadTask?.cancel()
+        loadTask = Task {
             do {
                 guard let wallet = walletService.getStoredWallet() else {
                     await MainActor.run {
@@ -102,12 +108,16 @@ struct NFTLoadingView: View {
                         tokenId: tokenId,
                         accountId: accountId
                     )
+                    
+                    try Task.checkCancellation()
+                    
                     await MainActor.run {
                         ownerAddress = owner
                         isClaimed = true
                     }
                 } catch let appError as AppError {
                     if case .blockchain(.contract(.tokenNotClaimed)) = appError {
+                        try Task.checkCancellation()
                         await MainActor.run {
                             isClaimed = false
                         }
@@ -123,11 +133,15 @@ struct NFTLoadingView: View {
                     accountId: accountId
                 )
                 
+                try Task.checkCancellation()
+                
                 // Convert IPFS URL to HTTP gateway URL
                 let httpMetadataUrl = ipfsService.convertToHTTPGateway(ipfsUrl)
                 
                 // Download NFT metadata from IPFS
                 let downloadedMetadata = try await ipfsService.downloadNFTMetadata(from: httpMetadataUrl)
+                
+                try Task.checkCancellation()
                 
                 // Download image if available
                 var downloadedImageData: Data? = nil
@@ -136,12 +150,18 @@ struct NFTLoadingView: View {
                     downloadedImageData = try await ipfsService.downloadImageData(from: httpImageUrl)
                 }
                 
+                try Task.checkCancellation()
+                
                 await MainActor.run {
                     metadata = downloadedMetadata
                     imageData = downloadedImageData
                     isLoading = false
                 }
             } catch {
+                // Don't show error if task was cancelled
+                if Task.isCancelled {
+                    return
+                }
                 await MainActor.run {
                     errorMessage = (error as? AppError)?.localizedDescription ?? "Failed to load NFT information."
                     isLoading = false

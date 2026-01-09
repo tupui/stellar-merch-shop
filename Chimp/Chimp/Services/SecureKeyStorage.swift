@@ -8,23 +8,30 @@ import Security
 import LocalAuthentication
 
 final class SecureKeyStorage {
-    /// Cache LAContext for a short period to avoid repeated biometric prompts within the same session.
-    private static var cachedContext: (context: LAContext, timestamp: Date)?
-    private static let contextTTL: TimeInterval = 300 // 5 minutes
-
-    /// Provide access to the private key while ensuring a single biometric prompt.
+    /// Provide access to the private key. Every access requires fresh biometric authentication.
     /// - Parameters:
     ///   - reason: The localized reason displayed in the Face ID prompt.
     ///   - work: Closure receiving the private key string. Must not store the key beyond the closure scope.
     /// - Returns: Generic value returned by the closure.
     /// - Throws: Rethrows errors from Keychain access or the closure.
+    /// 
+    /// Security Note: A fresh LAContext is created for each access, ensuring biometric authentication
+    /// is always required. The defer block attempts to clear a Data buffer copy, but due to Swift's String
+    /// copy-on-write semantics, the original `privateKey` String may still exist in memory with multiple
+    /// copies after this method returns. Swift's automatic memory management will eventually reclaim this
+    /// memory, but there is a brief window where the key material exists in unencrypted memory.
+    /// This is a known limitation of Swift and affects all iOS applications similarly. The key is still
+    /// protected by Keychain encryption at rest and biometric authentication required for access.
     func withPrivateKey<T>(reason: String = "Authenticate to access your wallet", work: (String) throws -> T) throws -> T {
-        guard let privateKey = try loadPrivateKey(using: context(for: reason)) else {
+        let context = LAContext()
+        context.localizedReason = reason
+        guard let privateKey = try loadPrivateKey(using: context) else {
             throw AppError.wallet(.noWallet)
         }
-        // Ensure key is wiped from memory after use
+        // Attempt to clear memory after use (limited effectiveness due to Swift's String semantics)
         defer {
-            // Overwrite temporary buffer
+            // Overwrite temporary buffer copy - note that the original String may still exist
+            // in memory due to Swift's copy-on-write semantics and closure capture
             var buffer = Data(privateKey.utf8)
             buffer.resetBytes(in: 0..<buffer.count)
         }
@@ -32,18 +39,7 @@ final class SecureKeyStorage {
     }
 
     // MARK: - Private helpers
-    private func context(for reason: String) -> LAContext {
-        // Re-use context if it is still fresh
-        if let cached = SecureKeyStorage.cachedContext,
-           Date().timeIntervalSince(cached.timestamp) < SecureKeyStorage.contextTTL {
-            return cached.context
-        }
-        let ctx = LAContext()
-        ctx.localizedReason = reason
-        SecureKeyStorage.cachedContext = (ctx, Date())
-        return ctx
-    }
-
+    
     private func loadPrivateKey(using context: LAContext) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -76,8 +72,6 @@ final class SecureKeyStorage {
         guard let privateKeyData = secretKey.data(using: .utf8) else {
             throw AppError.secureStorage(.storageFailed("Invalid key data format"))
         }
-        
-        SecureKeyStorage.cachedContext = nil
         
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -126,12 +120,6 @@ final class SecureKeyStorage {
             let errorMessage = keychainErrorMessage(for: status)
             throw AppError.secureStorage(.deletionFailed(errorMessage))
         }
-        
-        SecureKeyStorage.cachedContext = nil
-    }
-    
-    static func clearCachedContext() {
-        cachedContext = nil
     }
     
     func hasStoredKey() -> Bool {

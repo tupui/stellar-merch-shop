@@ -134,7 +134,6 @@ final class WalletService {
     /// Logout - clear stored wallet
     func logout() throws {
         try secureKeyStorage.deletePrivateKey()
-        SecureKeyStorage.clearCachedContext()
         UserDefaults.standard.removeObject(forKey: addressKey)
         if UserDefaults.standard.string(forKey: addressKey) != nil {
             UserDefaults.standard.removeObject(forKey: addressKey)
