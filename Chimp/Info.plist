@@ -25,15 +25,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NFCReaderUsageDescription</key>
-	<string>This app uses NFC to read and write data to blockchain-enabled NFC chips for NFT claiming, transferring, and minting operations.</string>
+	<string>This app uses NFC to read/write data and sign messages to the chip. Allowing to claim and transfer the merch on the blockchain.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Chi//mp uses Face ID to protect your wallet private key.</string>
 	<key>STELLAR_CONTRACT_ID_MAINNET</key>
 	<string>$(STELLAR_CONTRACT_ID_MAINNET)</string>
 	<key>STELLAR_CONTRACT_ID_TESTNET</key>
 	<string>$(STELLAR_CONTRACT_ID_TESTNET)</string>
-	<key>STELLAR_NETWORK</key>
-	<string>$(STELLAR_NETWORK)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

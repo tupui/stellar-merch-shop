@@ -149,8 +149,8 @@ class HomeViewModel: ObservableObject {
         // scheduledTimer already adds to the current (main) run loop
         errorTimeoutTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
             guard let self = self else { return }
-            // Timer is on main run loop, so we can safely access main actor properties
-            MainActor.assumeIsolated {
+            // Timer runs on main thread, use MainActor to safely mutate property
+            Task { @MainActor in
                 self.errorMessage = nil
             }
         }
@@ -187,7 +187,6 @@ class HomeViewModel: ObservableObject {
         // Contract ID is read from chip NDEF, not Settings
         errorMessage = nil
         nfcCoordinator.claimNFT { success, error in
-            // Results handled via callbacks
         }
     }
     
@@ -225,7 +224,6 @@ class HomeViewModel: ObservableObject {
         
         // Start NFC operation to complete transfer
         nfcCoordinator.transferNFT(recipientAddress: recipient, tokenId: tokenId) { success, error in
-            // Results handled via callbacks
         }
     }
     
@@ -237,7 +235,6 @@ class HomeViewModel: ObservableObject {
         errorMessage = nil
         // Start NFC operation immediately - no modal
         nfcCoordinator.signMessage(message: message) { success, globalCounter, keyCounter, signature in
-            // Results handled via callbacks
         }
     }
     
@@ -260,7 +257,6 @@ class HomeViewModel: ObservableObject {
         errorMessage = nil
         // Start NFC operation immediately - no modal
         nfcCoordinator.mintNFT { success, error in
-            // Results handled via callbacks
         }
     }
 }

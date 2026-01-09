@@ -225,7 +225,7 @@ final class BlockchainService {
     ) async throws -> UInt32 {
         Logger.logDebug("determineRecoveryId called (offline, using contract simulation)", category: .blockchain)
         
-        // Try each recovery ID (0-3) - matching JS: for (let recoveryId = 0; recoveryId <= 3; recoveryId++)
+        // Try each recovery ID (0-3)
         let recoveryIds: [UInt32] = [0, 1, 2, 3]
         var errors: [String] = []
         
@@ -448,7 +448,7 @@ final class BlockchainService {
         Logger.logDebug("submitTransaction called", category: .blockchain)
         Logger.logDebug("RPC URL: \(config.rpcUrl)", category: .blockchain)
         
-        // Verify transaction structure (matching JS validation)
+        // Verify transaction structure
         // Log transaction details for debugging
         Logger.logDebug("Transaction fee: \(transaction.fee)", category: .blockchain)
         Logger.logDebug("Transaction operations count: \(transaction.operations.count)", category: .blockchain)

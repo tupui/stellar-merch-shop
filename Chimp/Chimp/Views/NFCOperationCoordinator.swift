@@ -11,9 +11,6 @@ class NFCOperationCoordinator: NSObject {
     private let transferService = TransferService()
     private let mintService = MintService()
     private let blockchainService = BlockchainService()
-    private let ipfsService = IPFSService()
-    
-    // MARK: - Constants
     
     // Callbacks
     var onLoadNFTSuccess: ((String, UInt64) -> Void)?
@@ -26,18 +23,6 @@ class NFCOperationCoordinator: NSObject {
     var onSignError: ((String) -> Void)?
     var onMintSuccess: ((UInt64) -> Void)? // tokenId
     var onMintError: ((String) -> Void)?
-    
-    // Helper to get ViewController for presenting
-    private func getRootViewController() -> UIViewController? {
-        guard let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first,
-              let window = windowScene.windows.first,
-              let rootViewController = window.rootViewController else {
-            return nil
-        }
-        return rootViewController
-    }
     
     // MARK: - Load NFT
     func loadNFT(completion: @escaping (Bool, String?) -> Void) {
@@ -366,6 +351,7 @@ class NFCOperationCoordinator: NSObject {
     func resetState() {
         claimNFCHelper = nil
         transferNFCHelper = nil
+        transferReadNFCHelper = nil
         mintNFCHelper = nil
         loadNFTCompletion = nil
         signMessageData = nil

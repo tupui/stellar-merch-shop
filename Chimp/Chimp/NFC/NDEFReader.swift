@@ -17,7 +17,6 @@ final class NDEFReader {
     /// - Throws: AppError if reading fails
     static func readNDEFUrl(tag: NFCISO7816Tag, session: NFCTagReaderSession) async throws -> String? {
         do {
-            // Step 1: Select NDEF Application
             guard let selectAppAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x04, 0x00] + [UInt8(NDEF_AID.count)] + NDEF_AID + [0x00])) else {
                 throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF Application APDU"))
             }
@@ -27,7 +26,6 @@ final class NDEFReader {
                 throw AppError.nfc(.readWriteFailed("Failed to select NDEF application: \(selectAppSW1) \(selectAppSW2)"))
             }
             
-            // Step 2: Select NDEF File
             guard let selectFileAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x00, 0x0C, 0x02] + NDEF_FILE_ID)) else {
                 throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF File APDU"))
             }
@@ -37,7 +35,7 @@ final class NDEFReader {
                 throw AppError.nfc(.readWriteFailed("Failed to select NDEF file: \(selectFileSW1) \(selectFileSW2)"))
             }
             
-            // Step 3: Read NLEN (2 bytes at offset 0) to get NDEF message length
+            // Read NLEN (2 bytes at offset 0) to get NDEF message length
             guard let readNlenAPDU = NFCISO7816APDU(data: Data([0x00, 0xB0, 0x00, 0x00, 0x02])) else {
                 throw AppError.nfc(.readWriteFailed("Failed to create READ NLEN APDU"))
             }
@@ -56,7 +54,7 @@ final class NDEFReader {
                 return nil
             }
             
-            // Step 4: Read actual NDEF data (starting from offset 2)
+            // Read actual NDEF data (starting from offset 2)
             var ndefData = Data()
             var currentOffset: UInt16 = 2
             let maxReadLength: UInt8 = 255 - 2
@@ -85,9 +83,6 @@ final class NDEFReader {
             
             // Parse the NDEF URL
             return parseNDEFUrl(from: ndefData)
-            
-        } catch {
-            throw error
         }
     }
     
@@ -104,7 +99,6 @@ final class NDEFReader {
         }
         
         do {
-            // Step 1: Select NDEF Application
             guard let selectAppAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x04, 0x00] + [UInt8(NDEF_AID.count)] + NDEF_AID + [0x00])) else {
                 throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF Application APDU"))
             }
@@ -114,7 +108,6 @@ final class NDEFReader {
                 throw AppError.nfc(.readWriteFailed("Failed to select NDEF application: \(selectAppSW1) \(selectAppSW2)"))
             }
             
-            // Step 2: Select NDEF File
             guard let selectFileAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x00, 0x0C, 0x02] + NDEF_FILE_ID)) else {
                 throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF File APDU"))
             }
@@ -124,7 +117,7 @@ final class NDEFReader {
                 throw AppError.nfc(.readWriteFailed("Failed to select NDEF file: \(selectFileSW1) \(selectFileSW2)"))
             }
             
-            // Step 3: Write NLEN (NDEF message length)
+            // Write NLEN (NDEF message length)
             let nlen = UInt16(ndefBytes.count)
             let nlenBytes = [UInt8((nlen >> 8) & 0xFF), UInt8(nlen & 0xFF)]
             guard let writeNlenAPDU = NFCISO7816APDU(data: Data([0x00, 0xD6, 0x00, 0x00, 0x02] + nlenBytes)) else {
@@ -136,7 +129,7 @@ final class NDEFReader {
                 throw AppError.nfc(.readWriteFailed("Failed to write NLEN: \(writeNlenSW1) \(writeNlenSW2)"))
             }
             
-            // Step 4: Write NDEF data (starting from offset 2)
+            // Write NDEF data (starting from offset 2)
             var currentOffset: UInt16 = 2
             let maxWriteLength: UInt8 = 255 - 2
             
@@ -161,8 +154,6 @@ final class NDEFReader {
                 
                 currentOffset += UInt16(chunk.count)
             }
-        } catch {
-            throw error
         }
     }
     
@@ -191,7 +182,7 @@ final class NDEFReader {
             return nil
         }
         
-        let _ = data[0] // flags
+        _ = data[0] // flags
         let typeLength = data[1]
         let payloadLength = data[2]
         let typeStart = 3

@@ -64,8 +64,6 @@ final class CryptoUtils {
         
         // Append nonce XDR format
         // ScVal U32: 4 bytes discriminant (3) + 4 bytes value (big-endian)
-        // Format matches Soroban's to_xdr() method for u32
-        // This matches the TypeScript implementation: view.setUint32(0, 3, false); view.setUint32(4, nonce, false);
         var nonceXdr = Data()
         nonceXdr.append(contentsOf: [0x00, 0x00, 0x00, 0x03]) // U32 discriminant (big-endian uint32: 3)
         // Append nonce value as big-endian bytes (4 bytes)
@@ -103,7 +101,6 @@ final class CryptoUtils {
         ]
         
         // Half order = n / 2
-        // Matching JS implementation in src/util/crypto.ts
         let halfOrder: [UInt8] = [
             0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
             0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -123,7 +120,6 @@ final class CryptoUtils {
         }
         
         // If s > halfOrder, normalize: s = n - s
-        // Matching JS implementation exactly: src/util/crypto.ts normalizeS()
         if sGreaterThanHalf {
             var normalized = Data(count: 32)
             var borrow = 0

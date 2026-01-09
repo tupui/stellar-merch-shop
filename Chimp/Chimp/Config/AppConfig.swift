@@ -24,7 +24,6 @@ final class AppConfig: ObservableObject {
     private let adminModeKey = "app_admin_mode" // UserDefaults key for runtime override
     
     // Build configuration keys (set in Info.plist via build settings)
-    private let buildNetworkKey = "STELLAR_NETWORK"
     private let buildContractIdTestnetKey = "STELLAR_CONTRACT_ID_TESTNET"
     private let buildContractIdMainnetKey = "STELLAR_CONTRACT_ID_MAINNET"
     private let buildAdminModeKey = "ADMIN_MODE"
@@ -33,12 +32,9 @@ final class AppConfig: ObservableObject {
     @Published var currentNetwork: AppNetwork = .mainnet
     
     private init() {
-        // Initialize currentNetwork from UserDefaults or build config
+        // Initialize currentNetwork from UserDefaults or default to mainnet
         if let networkString = UserDefaults.standard.string(forKey: networkKey),
            let network = AppNetwork(rawValue: networkString) {
-            self.currentNetwork = network
-        } else if let buildNetwork = Bundle.main.infoDictionary?[buildNetworkKey] as? String,
-                  let network = AppNetwork(rawValue: buildNetwork.lowercased()) {
             self.currentNetwork = network
         } else {
             self.currentNetwork = .mainnet
@@ -148,15 +144,6 @@ final class AppConfig: ObservableObject {
             return buildContractId
         }
         return ""
-    }
-    
-    /// Get network from build configuration (without UserDefaults override)
-    func getBuildConfigNetwork() -> AppNetwork? {
-        if let buildNetwork = Bundle.main.infoDictionary?[buildNetworkKey] as? String,
-           let network = AppNetwork(rawValue: buildNetwork.lowercased()) {
-            return network
-        }
-        return nil
     }
     
     /// Admin mode flag - defaults to false (non-admin)

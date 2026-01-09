@@ -49,15 +49,32 @@ final class WalletService {
         // Get public key/address
         let address = keyPair.accountId
         
-        // Store private key in Secure Enclave
+        // Clear old address from UserDefaults completely
+        UserDefaults.standard.removeObject(forKey: addressKey)
+        
+        // Verify old address is removed (retry if needed)
+        if UserDefaults.standard.string(forKey: addressKey) != nil {
+            UserDefaults.standard.removeObject(forKey: addressKey)
+        }
+        
+        // Store private key in keychain (this also clears cached context)
         do {
             try secureKeyStorage.storePrivateKey(trimmedKey)
         } catch {
+            // If key storage fails, ensure address is not stored
+            UserDefaults.standard.removeObject(forKey: addressKey)
             throw AppError.secureStorage(.storageFailed("Failed to store wallet securely"))
         }
         
-        // Store public info in UserDefaults
+        // Store public address in UserDefaults AFTER successful key storage
         UserDefaults.standard.set(address, forKey: addressKey)
+        
+        // Verify address was stored correctly
+        let storedAddress = UserDefaults.standard.string(forKey: addressKey)
+        if storedAddress != address {
+            // Retry storage if verification failed
+            UserDefaults.standard.set(address, forKey: addressKey)
+        }
         
         return WalletConnection(
             address: address,
@@ -68,6 +85,16 @@ final class WalletService {
     /// Get stored wallet info (if any)
     /// - Returns: WalletConnection if wallet is stored, nil otherwise
     func getStoredWallet() -> WalletConnection? {
+        // Check if keychain has a key - this is the source of truth
+        // This check doesn't require biometric authentication
+        guard secureKeyStorage.hasStoredKey() else {
+            // If no key in keychain, clear any stale address from UserDefaults
+            UserDefaults.standard.removeObject(forKey: addressKey)
+            return nil
+        }
+        
+        // Return address from UserDefaults
+        // We trust it's correct since it's stored together with the key during login
         guard let address = UserDefaults.standard.string(forKey: addressKey),
               !address.isEmpty else {
             return nil
@@ -125,7 +152,6 @@ final class WalletService {
         }
         
         // Sign the transaction (modifies the transaction object in place)
-        // Matching test script: transaction.sign(keyPair: keyPair, network: .testnet)
         try transaction.sign(keyPair: keyPair, network: network)
         Logger.logDebug("Transaction signed successfully", category: .blockchain)
     }
@@ -133,7 +159,13 @@ final class WalletService {
     /// Logout - clear stored wallet
     func logout() throws {
         try secureKeyStorage.deletePrivateKey()
+        SecureKeyStorage.clearCachedContext()
         UserDefaults.standard.removeObject(forKey: addressKey)
+        
+        // Verify address was cleared (retry if needed)
+        if UserDefaults.standard.string(forKey: addressKey) != nil {
+            UserDefaults.standard.removeObject(forKey: addressKey)
+        }
     }
 }
 

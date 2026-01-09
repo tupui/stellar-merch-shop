@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct WalletAddressCard: View {
     let address: String

@@ -203,8 +203,6 @@ struct NFTViewSwiftUI: View {
             }
         } else {
             HStack {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundColor(.orange)
                 Text("This token exists but has not been claimed yet. Use the 'Claim NFT' feature to claim ownership.")
                     .font(.subheadline)
                     .foregroundColor(.orange)

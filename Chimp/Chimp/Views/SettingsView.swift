@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 import OSLog
 
 struct SettingsView: View {
@@ -38,10 +37,10 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 // Account Section
-                if let wallet = walletService.getStoredWallet() {
+                if let address = walletState.walletAddress {
                     Section(header: Text("Account")) {
                         WalletAddressCard(
-                            address: wallet.address,
+                            address: address,
                             network: config.currentNetwork
                         )
                     }
@@ -66,7 +65,7 @@ struct SettingsView: View {
                         
                         // Contract Configuration
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Contract Address")
+                            Text("Contract Address for minting")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                             TextField("C...", text: $contractId)

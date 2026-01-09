@@ -38,7 +38,6 @@ final class ClaimService {
             throw AppError.wallet(.noWallet)
         }
 
-        // Step 1: Read contract ID from chip's NDEF
         progressCallback?("Reading chip information...")
         let ndefUrl = try await NDEFReader.readNDEFUrl(tag: tag, session: session)
         guard let ndefUrl = ndefUrl, let contractId = NDEFReader.parseContractIdFromNDEFUrl(ndefUrl) else {
@@ -58,7 +57,6 @@ final class ClaimService {
         Logger.logDebug("Contract ID length: \(contractId.count)", category: .blockchain)
         Logger.logDebug("Wallet address: \(wallet.address)", category: .blockchain)
         
-        // Step 1: Read chip public key
         progressCallback?("Reading chip information...")
         let chipPublicKey = try await ChipOperations.readChipPublicKey(tag: tag, session: session, keyIndex: keyIndex)
         
@@ -73,7 +71,7 @@ final class ClaimService {
         let accountId = wallet.address
         Logger.logDebug("Source account: \(accountId)", category: .blockchain)
         
-        // Step 2: Get nonce from contract (read-only, no private key needed)
+        // Get nonce from contract (read-only, no private key needed)
         progressCallback?("Preparing transaction...")
         Logger.logDebug("Getting nonce for contract: \(contractId)", category: .blockchain)
         let currentNonce: UInt32
@@ -84,7 +82,6 @@ final class ClaimService {
                 accountId: accountId
             )
         } catch let appError as AppError {
-            // Re-throw contract errors as-is so ViewController can handle them specifically
             if case .blockchain(.contract) = appError {
                 throw appError
             }
@@ -97,7 +94,6 @@ final class ClaimService {
         let nonce = currentNonce + 1
         Logger.logDebug("Using nonce: \(nonce) (previous: \(currentNonce))", category: .blockchain)
         
-        // Step 4: Create SEP-53 message
         progressCallback?("Preparing transaction...")
         let (message, messageHash) = try CryptoUtils.createSEP53Message(
             contractId: contractId,
@@ -111,7 +107,6 @@ final class ClaimService {
         Logger.logDebug("SEP-53 message (hex): \(message.map { String(format: "%02x", $0) }.joined())", category: .crypto)
         Logger.logDebug("Message hash (hex): \(messageHash.map { String(format: "%02x", $0) }.joined())", category: .crypto)
         
-        // Step 4: Sign with chip
         progressCallback?("Signing transaction...")
         let signatureComponents = try await ChipOperations.signWithChip(
             tag: tag,
@@ -120,12 +115,10 @@ final class ClaimService {
             keyIndex: keyIndex
         )
         
-        // Step 5: Normalize S value (required by Soroban's secp256k1_recover)
-        // Matching JS implementation: normalizeS() in src/util/crypto.ts
+        // Normalize S value (required by Soroban's secp256k1_recover)
         let originalS = signatureComponents.s
         let normalizedS = CryptoUtils.normalizeS(originalS)
         
-        // Debug: Log signature components for comparison with JS
         let rHex = signatureComponents.r.map { String(format: "%02x", $0) }.joined()
         let sOriginalHex = originalS.map { String(format: "%02x", $0) }.joined()
         let sNormalizedHex = normalizedS.map { String(format: "%02x", $0) }.joined()
@@ -138,7 +131,7 @@ final class ClaimService {
             Logger.logDebug("S value already normalized (s <= half_order)", category: .crypto)
         }
         
-        // Step 6: Build signature (r + normalized s) - 64 bytes total
+        // Build signature (r + normalized s) - 64 bytes total
         var signature = Data()
         signature.append(signatureComponents.r)
         signature.append(normalizedS)
@@ -150,13 +143,13 @@ final class ClaimService {
         let signatureHex = signature.map { String(format: "%02x", $0) }.joined()
         Logger.logDebug("Final signature (r+s, hex): \(signatureHex)", category: .crypto)
         
-        // Step 7: Get keypair for transaction building and signing (requires biometric auth)
+        // Get keypair for transaction building and signing (requires biometric auth)
         let secureStorage = SecureKeyStorage()
         let sourceKeyPair = try secureStorage.withPrivateKey(reason: "Authenticate to sign the transaction", work: { key in
             try KeyPair(secretSeed: key)
         })
         
-        // Step 8: Determine recovery ID offline (matching JS determineRecoveryId)
+        // Determine recovery ID offline
         // This uses contract simulation to find the correct recovery ID before building the transaction
         progressCallback?("Preparing transaction...")
         Logger.logDebug("Determining recovery ID offline...", category: .blockchain)
@@ -177,7 +170,7 @@ final class ClaimService {
             throw AppError.crypto(.verificationFailed)
         }
         
-        // Step 8: Build transaction with the correct recovery ID
+        // Build transaction with the correct recovery ID
         progressCallback?("Building transaction...")
         Logger.logDebug("Building transaction with recovery ID \(recoveryId)...", category: .blockchain)
         let (transaction, tokenId): (Transaction, UInt64)
@@ -195,7 +188,6 @@ final class ClaimService {
             )
             Logger.logInfo("Transaction built successfully, token ID: \(tokenId)", category: .blockchain)
         } catch let appError as AppError {
-            // Re-throw contract errors as-is so ViewController can handle them specifically
             if case .blockchain(.contract) = appError {
                 throw appError
             }
@@ -206,17 +198,14 @@ final class ClaimService {
             throw AppError.blockchain(.networkError("Failed to build transaction: \(error.localizedDescription)"))
         }
 
-        // Step 9: Sign transaction
         progressCallback?("Signing transaction...")
         try await walletService.signTransaction(transaction)
 
-        // Step 10: Submit transaction (send the signed transaction object directly, matching test script)
         progressCallback?("Processing on blockchain network...")
         let txHash: String
         do {
             txHash = try await blockchainService.submitTransaction(transaction, progressCallback: progressCallback)
         } catch let appError as AppError {
-            // Re-throw contract errors as-is so ViewController can handle them specifically
             if case .blockchain(.contract) = appError {
                 throw appError
             }
@@ -225,7 +214,7 @@ final class ClaimService {
             throw AppError.blockchain(.networkError("Failed to submit transaction: \(error.localizedDescription)"))
         }
 
-        // Step 12: Update NDEF data on chip with token ID
+        // Update NDEF data on chip with token ID
         progressCallback?("Completing operation...")
         do {
             let newUrl = "https://nft.chimpdao.xyz/\(contractId)/\(tokenId)"

@@ -78,6 +78,9 @@ final class SecureKeyStorage {
             throw AppError.secureStorage(.storageFailed("Invalid key data format"))
         }
         
+        // Clear cached context BEFORE storing new key to prevent stale context reuse
+        SecureKeyStorage.cachedContext = nil
+        
         // Delete existing key if present
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -172,6 +175,15 @@ final class SecureKeyStorage {
             let errorMessage = keychainErrorMessage(for: status)
             throw AppError.secureStorage(.deletionFailed(errorMessage))
         }
+        
+        // Clear cached context after successful deletion
+        SecureKeyStorage.cachedContext = nil
+    }
+    
+    /// Clear the cached authentication context
+    /// Call this when replacing keys or on logout to ensure no stale context remains
+    static func clearCachedContext() {
+        cachedContext = nil
     }
     
     /// Check if a private key is stored (does not require authentication)

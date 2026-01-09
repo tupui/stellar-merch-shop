@@ -111,6 +111,9 @@ struct LoginView: View {
                 _ = try await walletService.loadWalletFromSecretKey(secretKey)
                 await MainActor.run {
                     isLoading = false
+                    // Clear the secret key field for security
+                    secretKey = ""
+                    // Force wallet state refresh to update UI with new address
                     walletState.checkWalletState()
                 }
             } catch {

@@ -65,7 +65,7 @@ final class IPFSService {
             }
         }
 
-        // Debug: Check if response looks like HTML (error page)
+        // Check if response looks like HTML (error page)
         if let responseString = String(data: data, encoding: .utf8) {
             if responseString.hasPrefix("<!DOCTYPE") || responseString.hasPrefix("<html") || responseString.contains("<html") {
                 Logger.logError("Received HTML instead of JSON. This might be an IPFS gateway error page.", category: .network)
@@ -85,7 +85,6 @@ final class IPFSService {
             return metadata
         } catch {
             Logger.logError("Failed to parse JSON: \(error)", category: .network)
-            // Debug: Show first 500 chars of response
             if let responseString = String(data: data, encoding: .utf8) {
                 Logger.logDebug("Raw response (first 500 chars): \(responseString.prefix(500))", category: .network)
             }

@@ -4,6 +4,7 @@ import Combine
 @MainActor
 class WalletState: ObservableObject {
     @Published var hasWallet: Bool = false
+    @Published var walletAddress: String? = nil
     private let walletService = WalletService.shared
     
     init() {
@@ -11,7 +12,13 @@ class WalletState: ObservableObject {
     }
     
     func checkWalletState() {
-        hasWallet = walletService.getStoredWallet() != nil
+        if let wallet = walletService.getStoredWallet() {
+            hasWallet = true
+            walletAddress = wallet.address
+        } else {
+            hasWallet = false
+            walletAddress = nil
+        }
     }
 }
 

@@ -54,7 +54,6 @@ final class MintService {
         Logger.logDebug("Contract ID length: \(contractId.count)", category: .blockchain)
         Logger.logDebug("Wallet address: \(wallet.address)", category: .blockchain)
 
-        // Step 1: Read chip public key
         progressCallback?("Reading chip information...")
         let chipPublicKey = try await ChipOperations.readChipPublicKey(tag: tag, session: session, keyIndex: keyIndex)
 
@@ -69,7 +68,7 @@ final class MintService {
         let accountId = wallet.address
         Logger.logDebug("Source account: \(accountId)", category: .blockchain)
 
-        // Step 2: Get nonce from contract (read-only, no private key needed)
+        // Get nonce from contract (read-only, no private key needed)
         progressCallback?("Preparing transaction...")
         Logger.logDebug("Getting nonce for contract: \(config.contractId)", category: .blockchain)
         let currentNonce: UInt32
@@ -80,7 +79,6 @@ final class MintService {
                 accountId: accountId
             )
         } catch let appError as AppError {
-            // Re-throw contract errors as-is so ViewController can handle them specifically
             if case .blockchain(.contract) = appError {
                 throw appError
             }
@@ -93,7 +91,6 @@ final class MintService {
         let nonce = currentNonce + 1
         Logger.logDebug("Using nonce: \(nonce)", category: .blockchain)
 
-        // Step 4: Create SEP-53 message
         progressCallback?("Preparing transaction...")
         let (message, messageHash) = try CryptoUtils.createSEP53Message(
             contractId: config.contractId,
@@ -107,7 +104,6 @@ final class MintService {
         Logger.logDebug("SEP-53 message (hex): \(message.map { String(format: "%02x", $0) }.joined())", category: .crypto)
         Logger.logDebug("Message hash (hex): \(messageHash.map { String(format: "%02x", $0) }.joined())", category: .crypto)
 
-        // Step 5: Sign with chip
         progressCallback?("Signing transaction...")
         let signatureComponents = try await ChipOperations.signWithChip(
             tag: tag,
@@ -116,11 +112,10 @@ final class MintService {
             keyIndex: keyIndex
         )
 
-        // Step 6: Normalize S value (required by Soroban's secp256k1_recover)
+        // Normalize S value (required by Soroban's secp256k1_recover)
         let originalS = signatureComponents.s
         let normalizedS = CryptoUtils.normalizeS(originalS)
 
-        // Debug: Log signature components
         let rHex = signatureComponents.r.map { String(format: "%02x", $0) }.joined()
         let sOriginalHex = originalS.map { String(format: "%02x", $0) }.joined()
         let sNormalizedHex = normalizedS.map { String(format: "%02x", $0) }.joined()
@@ -133,7 +128,7 @@ final class MintService {
             Logger.logDebug("S value already normalized (s <= half_order)", category: .crypto)
         }
 
-        // Step 7: Build signature (r + normalized s) - 64 bytes total
+        // Build signature (r + normalized s) - 64 bytes total
         var signature = Data()
         signature.append(signatureComponents.r)
         signature.append(normalizedS)
@@ -145,13 +140,13 @@ final class MintService {
         let signatureHex = signature.map { String(format: "%02x", $0) }.joined()
         Logger.logDebug("Final signature (r+s, hex): \(signatureHex)", category: .crypto)
 
-        // Step 8: Get keypair for transaction building and signing (requires biometric auth)
+        // Get keypair for transaction building and signing (requires biometric auth)
         let secureStorage = SecureKeyStorage()
         let sourceKeyPair = try secureStorage.withPrivateKey(reason: "Authenticate to sign the transaction", work: { key in
             try KeyPair(secretSeed: key)
         })
         
-        // Step 9: Determine recovery ID offline
+        // Determine recovery ID offline
         progressCallback?("Preparing transaction...")
         Logger.logDebug("Determining recovery ID offline...", category: .blockchain)
         let recoveryId: UInt32
@@ -171,7 +166,7 @@ final class MintService {
             throw AppError.crypto(.verificationFailed)
         }
 
-        // Step 9: Build transaction with the correct recovery ID
+        // Build transaction with the correct recovery ID
         progressCallback?("Building transaction...")
         Logger.logDebug("Building transaction with recovery ID \(recoveryId)...", category: .blockchain)
         let (transaction, tokenId): (Transaction, UInt64)
@@ -187,7 +182,6 @@ final class MintService {
             )
             Logger.logInfo("Transaction built successfully, token ID: \(tokenId)", category: .blockchain)
         } catch let appError as AppError {
-            // Re-throw contract errors as-is so ViewController can handle them specifically
             if case .blockchain(.contract) = appError {
                 throw appError
             }
@@ -198,17 +192,14 @@ final class MintService {
             throw AppError.blockchain(.networkError("Failed to build transaction: \(error.localizedDescription)"))
         }
 
-        // Step 10: Sign transaction
         progressCallback?("Signing transaction...")
         try await walletService.signTransaction(transaction)
 
-        // Step 11: Submit transaction
         progressCallback?("Processing on blockchain network...")
         let txHash: String
         do {
             txHash = try await blockchainService.submitTransaction(transaction, progressCallback: progressCallback)
         } catch let appError as AppError {
-            // Re-throw contract errors as-is so ViewController can handle them specifically
             if case .blockchain(.contract) = appError {
                 throw appError
             }
@@ -217,7 +208,7 @@ final class MintService {
             throw AppError.blockchain(.networkError("Failed to submit transaction: \(error.localizedDescription)"))
         }
 
-        // Step 12: Update NDEF data on chip with token ID
+        // Update NDEF data on chip with token ID
         progressCallback?("Completing operation...")
         do {
             let newUrl = "https://nft.chimpdao.xyz/\(config.contractId)/\(tokenId)"
