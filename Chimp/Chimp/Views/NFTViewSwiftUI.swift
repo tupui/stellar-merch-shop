@@ -9,8 +9,7 @@ struct NFTViewSwiftUI: View {
     let contractId: String
     let tokenId: UInt64
     
-    @State private var showingShareOptions = false
-    @Environment(\.openURL) private var openURL
+    @State private var showingShareSheet = false
     
     private let walletService = WalletService.shared
     
@@ -32,30 +31,17 @@ struct NFTViewSwiftUI: View {
         return components.url ?? URL(string: "https://nft.chimpdao.xyz")!
     }
     
+    private var nftImage: UIImage {
+        UIImage(data: imageData!)!
+    }
+    
     private var shareMessage: String {
         let name = metadata.name ?? "my collectible"
-        return "Check out \(name) on Stellar Merch Shop! \(nftURL.absoluteString)"
+        return "Check out \(name) @Chi_m_p! \(nftURL.absoluteString)"
     }
     
-    private var twitterShareURL: URL {
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "twitter.com"
-        components.path = "/intent/tweet"
-        components.queryItems = [URLQueryItem(name: "text", value: shareMessage)]
-        return components.url ?? URL(string: "https://twitter.com")!
-    }
-    
-    private var telegramShareURL: URL {
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "t.me"
-        components.path = "/share/url"
-        components.queryItems = [
-            URLQueryItem(name: "url", value: nftURL.absoluteString),
-            URLQueryItem(name: "text", value: shareMessage)
-        ]
-        return components.url ?? URL(string: "https://t.me")!
+    private var shareItems: [Any] {
+        [nftImage, shareMessage, nftURL]
     }
     
     var body: some View {
@@ -122,30 +108,14 @@ struct NFTViewSwiftUI: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
-                    showingShareOptions = true
+                    showingShareSheet = true
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
             }
         }
-        .confirmationDialog("Share", isPresented: $showingShareOptions, titleVisibility: .hidden) {
-            Button {
-                openURL(twitterShareURL)
-            } label: {
-                Label("Share on X", systemImage: "xmark")
-            }
-            
-            Button {
-                openURL(telegramShareURL)
-            } label: {
-                Label("Share on Telegram", systemImage: "paperplane.fill")
-            }
-            
-            ShareLink(item: nftURL, message: Text(shareMessage)) {
-                Label("More Options", systemImage: "ellipsis")
-            }
-            
-            Button("Cancel", role: .cancel) {}
+        .sheet(isPresented: $showingShareSheet) {
+            ShareSheet(activityItems: shareItems)
         }
     }
     
@@ -233,6 +203,17 @@ struct AttributeRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(attribute.trait_type): \(attribute.value)")
     }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 
