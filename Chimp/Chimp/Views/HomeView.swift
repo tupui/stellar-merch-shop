@@ -1,4 +1,31 @@
 import SwiftUI
+import UIKit
+
+// Helper view for tiling background pattern using UIKit pattern image
+struct TilingBackground: UIViewRepresentable {
+    let imageName: String
+    let opacity: Double
+    
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        
+        // Load the image
+        guard let image = UIImage(named: imageName) else {
+            return view
+        }
+        
+        // Create a pattern color from the image
+        let patternColor = UIColor(patternImage: image)
+        view.backgroundColor = patternColor.withAlphaComponent(opacity)
+        
+        return view
+    }
+    
+    func updateUIView(_ uiView: UIView, context: Context) {
+        // Update if needed
+    }
+}
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
@@ -6,39 +33,45 @@ struct HomeView: View {
     
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Header with logo
-                    headerSection
-                    
-                    VStack(spacing: 16) {
-                        // Error message
-                        if let error = viewModel.errorMessage {
-                            ErrorBanner(
-                                error: error,
-                                onDismiss: {
-                                    viewModel.dismissError()
-                                },
-                                onRetry: nil,
-                                onCheckSettings: (error.lowercased().contains("contract") || error.lowercased().contains("settings")) ? {
-                                    viewModel.dismissError()
-                                } : nil
-                            )
-                            .padding(.horizontal, 20)
-                            .padding(.top, 16)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                        }
+            ZStack {
+                // Background image layer - tiling pattern
+                TilingBackground(imageName: "Background", opacity: 0.3)
+                    .ignoresSafeArea()
+                
+                // Content
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Header with logo
+                        headerSection
                         
-                        // Main action cards
-                        actionCardsSection
-                            .padding(.horizontal, 20)
-                            .padding(.top, viewModel.errorMessage == nil ? 16 : 0)
+                        VStack(spacing: 16) {
+                            // Error message
+                            if let error = viewModel.errorMessage {
+                                ErrorBanner(
+                                    error: error,
+                                    onDismiss: {
+                                        viewModel.dismissError()
+                                    },
+                                    onRetry: nil,
+                                    onCheckSettings: (error.lowercased().contains("contract") || error.lowercased().contains("settings")) ? {
+                                        viewModel.dismissError()
+                                    } : nil
+                                )
+                                .padding(.horizontal, 20)
+                                .padding(.top, 16)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                            }
+                            
+                            // Main action cards
+                            actionCardsSection
+                                .padding(.horizontal, 20)
+                                .padding(.top, viewModel.errorMessage == nil ? 16 : 0)
+                        }
+                        .animation(.easeInOut(duration: 0.3), value: viewModel.errorMessage)
+                        .padding(.bottom, 24)
                     }
-                    .animation(.easeInOut(duration: 0.3), value: viewModel.errorMessage)
-                    .padding(.bottom, 24)
                 }
             }
-            .background(Color.chimpBackground)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .overlay {

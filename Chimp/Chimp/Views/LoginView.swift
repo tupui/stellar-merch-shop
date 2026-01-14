@@ -12,7 +12,8 @@ struct LoginView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.chimpBackground
+                // Background pattern
+                TilingBackground(imageName: "Background", opacity: 0.3)
                     .ignoresSafeArea()
                     .onTapGesture {
                         isSecretKeyFocused = false
