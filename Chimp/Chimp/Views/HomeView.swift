@@ -95,6 +95,13 @@ struct HomeView: View {
                     )
                 }
             }
+            .sheet(isPresented: $viewModel.showingIPRightsAcknowledgment) {
+                IPRightsAcknowledgmentView(
+                    isPresented: $viewModel.showingIPRightsAcknowledgment
+                ) {
+                    viewModel.acknowledgeIPRights()
+                }
+            }
         }
     }
     

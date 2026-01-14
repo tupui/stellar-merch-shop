@@ -31,6 +31,9 @@ class HomeViewModel: ObservableObject {
     @Published var signatureData: (globalCounter: UInt32, keyCounter: UInt32, derSignature: String)?
     @Published var showingConfetti = false
     
+    // IP Rights Acknowledgment state
+    @Published var showingIPRightsAcknowledgment = false
+    
     // Operation coordinator will handle the actual NFC operations
     let nfcCoordinator = NFCOperationCoordinator()
     
@@ -163,10 +166,32 @@ class HomeViewModel: ObservableObject {
             return
         }
         
+        // Check if user has acknowledged IP rights
+        if !hasAcknowledgedIPRights() {
+            // Show acknowledgment sheet first
+            showingIPRightsAcknowledgment = true
+            return
+        }
+        
+        // User has already acknowledged, proceed with claim
+        executeClaim()
+    }
+    
+    func executeClaim() {
         // Contract ID is read from chip NDEF, not Settings
         errorMessage = nil
         nfcCoordinator.claimNFT { success, error in
         }
+    }
+    
+    func acknowledgeIPRights() {
+        UserDefaults.standard.set(true, forKey: "hasAcknowledgedIPRights")
+        // After acknowledgment, execute the pending claim
+        executeClaim()
+    }
+    
+    private func hasAcknowledgedIPRights() -> Bool {
+        return UserDefaults.standard.bool(forKey: "hasAcknowledgedIPRights")
     }
     
     func transferNFT() {
