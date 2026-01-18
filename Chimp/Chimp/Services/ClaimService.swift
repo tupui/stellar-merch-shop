@@ -44,18 +44,10 @@ final class ClaimService {
             throw AppError.validation("Invalid contract ID in NFC chip")
         }
 
-        Logger.logDebug("Contract ID from chip: \(contractId)", category: .blockchain)
-
-        // Validate contract ID format
         guard config.validateContractId(contractId) else {
             Logger.logError("Invalid contract ID format: \(contractId)", category: .blockchain)
-            Logger.logError("Contract ID should be 56 characters, start with 'C'", category: .blockchain)
             throw AppError.validation("Invalid contract ID format. Contract ID must be 56 characters and start with 'C'.")
         }
-        
-        Logger.logDebug("Contract ID: \(contractId)", category: .blockchain)
-        Logger.logDebug("Contract ID length: \(contractId.count)", category: .blockchain)
-        Logger.logDebug("Wallet address: \(wallet.address)", category: .blockchain)
         
         progressCallback?("Reading chip information...")
         let chipPublicKey = try await ChipOperations.readChipPublicKey(tag: tag, session: session, keyIndex: keyIndex)
@@ -67,13 +59,9 @@ final class ClaimService {
             throw AppError.crypto(.invalidKey("Invalid public key format from chip. Please ensure you're using a compatible NFC chip."))
         }
         
-        // Use wallet address for read-only queries (no private key needed)
         let accountId = wallet.address
-        Logger.logDebug("Source account: \(accountId)", category: .blockchain)
         
-        // Get nonce from contract (read-only, no private key needed)
         progressCallback?("Preparing transaction...")
-        Logger.logDebug("Getting nonce for contract: \(contractId)", category: .blockchain)
         let currentNonce: UInt32
         do {
             currentNonce = try await blockchainService.getNonce(
@@ -85,16 +73,14 @@ final class ClaimService {
             if case .blockchain(.contract) = appError {
                 throw appError
             }
-            Logger.logError("ERROR getting nonce: \(appError)", category: .blockchain)
+            Logger.logError("Failed to get nonce: \(appError)", category: .blockchain)
             throw AppError.nfc(.chipError("Failed to get nonce: \(appError.localizedDescription)"))
         } catch {
-            Logger.logError("ERROR getting nonce: \(error)", category: .blockchain)
+            Logger.logError("Failed to get nonce: \(error)", category: .blockchain)
             throw AppError.nfc(.chipError("Failed to get nonce: \(error.localizedDescription)"))
         }
         let nonce = currentNonce + 1
-        Logger.logDebug("Using nonce: \(nonce) (previous: \(currentNonce))", category: .blockchain)
         
-        progressCallback?("Preparing transaction...")
         let (message, messageHash) = try CryptoUtils.createSEP53Message(
             contractId: contractId,
             functionName: "claim",
@@ -102,10 +88,6 @@ final class ClaimService {
             nonce: nonce,
             networkPassphrase: config.networkPassphrase
         )
-        
-        Logger.logDebug("SEP-53 message length: \(message.count)", category: .crypto)
-        Logger.logDebug("SEP-53 message (hex): \(message.map { String(format: "%02x", $0) }.joined())", category: .crypto)
-        Logger.logDebug("Message hash (hex): \(messageHash.map { String(format: "%02x", $0) }.joined())", category: .crypto)
         
         progressCallback?("Signing transaction...")
         let signatureComponents = try await ChipOperations.signWithChip(
@@ -115,23 +97,9 @@ final class ClaimService {
             keyIndex: keyIndex
         )
         
-        // Normalize S value (required by Soroban's secp256k1_recover)
         let originalS = signatureComponents.s
         let normalizedS = CryptoUtils.normalizeS(originalS)
         
-        let rHex = signatureComponents.r.map { String(format: "%02x", $0) }.joined()
-        let sOriginalHex = originalS.map { String(format: "%02x", $0) }.joined()
-        let sNormalizedHex = normalizedS.map { String(format: "%02x", $0) }.joined()
-        Logger.logDebug("Signature r (hex): \(rHex)", category: .crypto)
-        Logger.logDebug("Signature s original (hex): \(sOriginalHex)", category: .crypto)
-        Logger.logDebug("Signature s normalized (hex): \(sNormalizedHex)", category: .crypto)
-        if originalS != normalizedS {
-            Logger.logDebug("S value was normalized (s > half_order)", category: .crypto)
-        } else {
-            Logger.logDebug("S value already normalized (s <= half_order)", category: .crypto)
-        }
-        
-        // Build signature (r + normalized s) - 64 bytes total
         var signature = Data()
         signature.append(signatureComponents.r)
         signature.append(normalizedS)
@@ -140,39 +108,25 @@ final class ClaimService {
             throw AppError.crypto(.invalidSignature)
         }
         
-        let signatureHex = signature.map { String(format: "%02x", $0) }.joined()
-        Logger.logDebug("Final signature (r+s, hex): \(signatureHex)", category: .crypto)
+        let sourceKeyPair = try KeyPair(accountId: wallet.address)
         
-        // Get keypair for transaction building and signing (requires biometric auth)
-        let secureStorage = SecureKeyStorage()
-        let sourceKeyPair = try secureStorage.withPrivateKey(reason: "Authenticate to sign the transaction", work: { key in
-            try KeyPair(secretSeed: key)
-        })
-        
-        // Determine recovery ID offline
-        // This uses contract simulation to find the correct recovery ID before building the transaction
-        progressCallback?("Preparing transaction...")
-        Logger.logDebug("Determining recovery ID offline...", category: .blockchain)
         let recoveryId: UInt32
         do {
             recoveryId = try await blockchainService.determineRecoveryId(
                 contractId: contractId,
-                claimant: wallet.address,
+                method: .claim(claimant: wallet.address),
                 message: message,
                 signature: signature,
                 publicKey: publicKeyData,
                 nonce: nonce,
                 sourceKeyPair: sourceKeyPair
             )
-            Logger.logDebug("Recovery ID determined: \(recoveryId)", category: .blockchain)
         } catch {
-            Logger.logError("ERROR determining recovery ID: \(error)", category: .blockchain)
+            Logger.logError("Failed to determine recovery ID: \(error)", category: .blockchain)
             throw AppError.crypto(.verificationFailed)
         }
         
-        // Build transaction with the correct recovery ID
         progressCallback?("Building transaction...")
-        Logger.logDebug("Building transaction with recovery ID \(recoveryId)...", category: .blockchain)
         let (transaction, tokenId): (Transaction, UInt64)
         do {
             (transaction, tokenId) = try await blockchainService.buildClaimTransaction(
@@ -186,7 +140,6 @@ final class ClaimService {
                 sourceAccount: wallet.address,
                 sourceKeyPair: sourceKeyPair
             )
-            Logger.logInfo("Transaction built successfully, token ID: \(tokenId)", category: .blockchain)
         } catch let appError as AppError {
             if case .blockchain(.contract) = appError {
                 throw appError
@@ -221,7 +174,6 @@ final class ClaimService {
             try await NDEFReader.writeNDEFUrl(tag: tag, session: session, url: newUrl)
         } catch {
             Logger.logWarning("Failed to update NDEF data on chip: \(error)", category: .nfc)
-            // Don't fail the claim operation if NDEF update fails - the token was successfully claimed
         }
 
         return ClaimResult(transactionHash: txHash, tokenId: tokenId, contractId: contractId)

@@ -201,12 +201,19 @@ final class BlockchainService {
         }
     }
     
-    /// Determine recovery ID by simulating the claim call with each recovery ID (0-3)
+    /// Contract method type for recovery ID determination
+    enum ContractMethod {
+        case claim(claimant: String)
+        case transfer(from: String, to: String, tokenId: UInt64)
+        case mint
+    }
+    
+    /// Determine recovery ID by simulating the appropriate contract call with each recovery ID (0-3)
     /// This is done offline (simulation only, no transaction submission)
     /// Matches JS implementation: determineRecoveryId() in src/util/crypto.ts
     /// - Parameters:
     ///   - contractId: Contract ID
-    ///   - claimant: Claimant address
+    ///   - method: The contract method being executed (claim, transfer, or mint)
     ///   - message: SEP-53 message (without nonce)
     ///   - signature: ECDSA signature (64 bytes: r + s)
     ///   - publicKey: Chip public key (65 bytes, uncompressed)
@@ -216,63 +223,77 @@ final class BlockchainService {
     /// - Throws: AppError if no matching recovery ID found
     func determineRecoveryId(
         contractId: String,
-        claimant: String,
+        method: ContractMethod,
         message: Data,
         signature: Data,
         publicKey: Data,
         nonce: UInt32,
         sourceKeyPair: KeyPair
     ) async throws -> UInt32 {
-        Logger.logDebug("determineRecoveryId called (offline, using contract simulation)", category: .blockchain)
-        
-        // Try each recovery ID (0-3)
         let recoveryIds: [UInt32] = [0, 1, 2, 3]
         var errors: [String] = []
         
         for recoveryId in recoveryIds {
-            Logger.logDebug("Trying recovery ID \(recoveryId)...", category: .blockchain)
             
             do {
                 // Try to build the transaction (this will simulate it)
                 // If simulation succeeds without invalidSignature error, this recovery ID is correct
-                let (_ , _) = try await buildClaimTransaction(
-                    contractId: contractId,
-                    claimant: claimant,
-                    message: message,
-                    signature: signature,
-                    recoveryId: recoveryId,
-                    publicKey: publicKey,
-                    nonce: nonce,
-                    sourceAccount: sourceKeyPair.accountId,
-                    sourceKeyPair: sourceKeyPair
-                )
+                // We simulate the SAME method that will actually be called
+                switch method {
+                case .claim(let claimant):
+                    let (_ , _) = try await buildClaimTransaction(
+                        contractId: contractId,
+                        claimant: claimant,
+                        message: message,
+                        signature: signature,
+                        recoveryId: recoveryId,
+                        publicKey: publicKey,
+                        nonce: nonce,
+                        sourceAccount: sourceKeyPair.accountId,
+                        sourceKeyPair: sourceKeyPair
+                    )
+                case .transfer(let from, let to, let tokenId):
+                    let _ = try await buildTransferTransaction(
+                        contractId: contractId,
+                        from: from,
+                        to: to,
+                        tokenId: tokenId,
+                        message: message,
+                        signature: signature,
+                        recoveryId: recoveryId,
+                        publicKey: publicKey,
+                        nonce: nonce,
+                        sourceKeyPair: sourceKeyPair
+                    )
+                case .mint:
+                    let (_ , _) = try await buildMintTransaction(
+                        contractId: contractId,
+                        message: message,
+                        signature: signature,
+                        recoveryId: recoveryId,
+                        publicKey: publicKey,
+                        nonce: nonce,
+                        sourceKeyPair: sourceKeyPair
+                    )
+                }
                 
-                // If we get here, simulation succeeded - this is the correct recovery ID
-                Logger.logDebug("Recovery ID \(recoveryId) is correct (simulation succeeded)", category: .blockchain)
                 return recoveryId
             } catch {
-                // Check if it's an invalidSignature error (wrong recovery ID)
                 if case AppError.blockchain(.contract(.invalidSignature)) = error {
                     let errorMsg = "Recovery ID \(recoveryId): InvalidSignature"
                     errors.append(errorMsg)
-                    Logger.logDebug("Recovery ID \(recoveryId) failed with invalidSignature, trying next...", category: .blockchain)
                     continue
                 }
                 
-                // Check for crypto errors (invalid recovery ID)
                 let errorString = "\(error)"
                 if errorString.contains("InvalidInput") ||
                    errorString.contains("recovery failed") ||
                    errorString.contains("recover_key_ecdsa") {
                     let errorMsg = "Recovery ID \(recoveryId): InvalidInput"
                     errors.append(errorMsg)
-                    Logger.logDebug("Recovery ID \(recoveryId) failed with crypto error, trying next...", category: .blockchain)
                     continue
                 }
                 
-                // Other errors (like tokenAlreadyClaimed) mean the signature is valid
-                // but there's a different issue - this recovery ID is correct
-                Logger.logDebug("Recovery ID \(recoveryId) simulation failed with non-signature error, assuming this recovery ID is correct", category: .blockchain)
                 return recoveryId
             }
         }
@@ -308,7 +329,6 @@ final class BlockchainService {
         sourceAccount: String,
         sourceKeyPair: KeyPair
     ) async throws -> (transaction: Transaction, tokenId: UInt64) {
-        Logger.logDebug("buildClaimTransaction called", category: .blockchain)
         let claimantAddress = try SCAddressXDR(accountId: claimant)
         
         let args: [SCValXDR] = [
@@ -445,25 +465,8 @@ final class BlockchainService {
     /// - Returns: Transaction hash
     /// - Throws: AppError if submission fails
     func submitTransaction(_ transaction: Transaction, progressCallback: ((String) -> Void)? = nil) async throws -> String {
-        Logger.logDebug("submitTransaction called", category: .blockchain)
-        Logger.logDebug("RPC URL: \(config.rpcUrl)", category: .blockchain)
-        
-        // Verify transaction structure
-        // Log transaction details for debugging
-        Logger.logDebug("Transaction fee: \(transaction.fee)", category: .blockchain)
-        Logger.logDebug("Transaction operations count: \(transaction.operations.count)", category: .blockchain)
-        
-        // Verify transaction has operations
         guard !transaction.operations.isEmpty else {
             Logger.logError("Transaction has no operations", category: .blockchain)
-            throw AppError.blockchain(.transactionFailed)
-        }
-        
-        // Verify transaction fee is valid (minimum 100 stroops per operation)
-        let minFeePerOperation: Int64 = 100
-        let requiredMinFee = minFeePerOperation * Int64(transaction.operations.count)
-        if transaction.fee < requiredMinFee {
-            Logger.logError("Transaction fee (\(transaction.fee)) is below minimum (\(requiredMinFee))", category: .blockchain)
             throw AppError.blockchain(.transactionFailed)
         }
         
@@ -477,17 +480,12 @@ final class BlockchainService {
         switch sentTxResponse {
         case .success(let response):
             sentTx = response
-            Logger.logDebug("Transaction sent successfully", category: .blockchain)
-            Logger.logDebug("SentTx: \(sentTx)", category: .blockchain)
             
-            // Check for immediate errors in the response
             if sentTx.status == "ERROR" {
                 Logger.logError("Transaction was immediately rejected with status: ERROR", category: .blockchain)
                 if let errorResult = sentTx.errorResult {
                     Logger.logError("Error result code: \(errorResult.code)", category: .blockchain)
-                    Logger.logDebug("Error result XDR: \(sentTx.errorResultXdr ?? "nil")", category: .blockchain)
                     
-                    // Check for contract errors
                     let errorString = "\(errorResult)"
                     if let contractError = ContractError.fromErrorString(errorString) {
                         Logger.logError("Contract error detected: \(contractError)", category: .blockchain)
@@ -510,9 +508,7 @@ final class BlockchainService {
                 }
             }
             
-            // If status is not PENDING or SUCCESS, don't poll
             if sentTx.status != "PENDING" && sentTx.status != "SUCCESS" {
-                Logger.logDebug("Transaction status is '\(sentTx.status)', not polling", category: .blockchain)
                 if sentTx.status == "SUCCESS" {
                     return hashString
                 } else {
@@ -520,11 +516,8 @@ final class BlockchainService {
                 }
             }
         case .failure(let error):
-            Logger.logError("ERROR sending transaction: \(error)", category: .blockchain)
-            Logger.logError("Error type: \(type(of: error))", category: .blockchain)
-            Logger.logError("Error details: \(error)", category: .blockchain)
+            Logger.logError("Failed to send transaction: \(error)", category: .blockchain)
             
-            // Check for account not found errors
             let errorString = "\(error)"
             let errorLowercased = errorString.lowercased()
             if errorLowercased.contains("could not find account") || 
@@ -543,19 +536,15 @@ final class BlockchainService {
             throw AppError.blockchain(.transactionRejected("Failed to send transaction: \(error.localizedDescription)"))
         }
         
-        // Poll for transaction confirmation: initial 2s wait, then 1s intervals
-        Logger.logDebug("Polling for transaction confirmation...", category: .blockchain)
         progressCallback?("Waiting for blockchain confirmation...")
-        let maxAttempts = 30 // 30 attempts max
-        let initialDelay: TimeInterval = 2.0 // Initial 2 second wait
-        let pollInterval: TimeInterval = 1.0 // Then check every 1 second
+        let maxAttempts = 30
+        let initialDelay: TimeInterval = 2.0
+        let pollInterval: TimeInterval = 1.0
         var attempts = 0
         
         while attempts < maxAttempts {
-            // Wait before checking (2s initial, then 1s)
             let delay = attempts == 0 ? initialDelay : pollInterval
             let delayNanoseconds = UInt64(delay * 1_000_000_000)
-            Logger.logDebug("Waiting \(String(format: "%.1f", delay))s before attempt \(attempts + 1)/\(maxAttempts)...", category: .blockchain)
             progressCallback?("Confirming transaction...")
             try await Task.sleep(nanoseconds: delayNanoseconds)
             
@@ -563,19 +552,14 @@ final class BlockchainService {
             
             switch txResponseEnum {
             case .success(let txResponse):
-                Logger.logDebug("Transaction status: \(txResponse.status)", category: .blockchain)
                 if txResponse.status == GetTransactionResponse.STATUS_SUCCESS {
                     Logger.logInfo("Transaction confirmed successfully!", category: .blockchain)
                     progressCallback?("Transaction confirmed!")
                     return hashString
                 } else if txResponse.status == GetTransactionResponse.STATUS_FAILED {
                     Logger.logError("Transaction failed on network", category: .blockchain)
-                    Logger.logDebug("Full response: \(txResponse)", category: .blockchain)
                     
-                    // Use structured error parsing
                     let responseString = "\(txResponse)"
-                    Logger.logDebug("Response string: \(responseString)", category: .blockchain)
-                    
                     if let contractError = ContractError.fromErrorString(responseString) {
                         Logger.logError("Contract error detected in transaction response: \(contractError)", category: .blockchain)
                         throw AppError.blockchain(.contract(contractError))

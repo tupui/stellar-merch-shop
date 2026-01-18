@@ -23,7 +23,6 @@ final class WalletService {
     /// - Returns: WalletConnection with address
     /// - Throws: AppError if key is invalid or storage fails
     func loadWalletFromSecretKey(_ secretKey: String) async throws -> WalletConnection {
-        // Validate secret key format
         let trimmedKey = secretKey.trimmingCharacters(in: .whitespacesAndNewlines)
         
         guard !trimmedKey.isEmpty else {
@@ -38,7 +37,6 @@ final class WalletService {
             throw AppError.validation("Invalid secret key length. Stellar secret keys are 56 characters")
         }
         
-        // Generate KeyPair from secret key
         let keyPair: KeyPair
         do {
             keyPair = try KeyPair(secretSeed: trimmedKey)
@@ -48,22 +46,12 @@ final class WalletService {
         
         let address = keyPair.accountId
         
-        UserDefaults.standard.removeObject(forKey: addressKey)
-        if UserDefaults.standard.string(forKey: addressKey) != nil {
-            UserDefaults.standard.removeObject(forKey: addressKey)
-        }
-        
         do {
             try secureKeyStorage.storePrivateKey(trimmedKey)
+            UserDefaults.standard.set(address, forKey: addressKey)
         } catch {
             UserDefaults.standard.removeObject(forKey: addressKey)
             throw AppError.secureStorage(.storageFailed("Failed to store wallet securely"))
-        }
-        
-        UserDefaults.standard.set(address, forKey: addressKey)
-        let storedAddress = UserDefaults.standard.string(forKey: addressKey)
-        if storedAddress != address {
-            UserDefaults.standard.set(address, forKey: addressKey)
         }
         
         return WalletConnection(
@@ -99,25 +87,11 @@ final class WalletService {
             try KeyPair(secretSeed: key)
         })
         
-        Logger.logDebug("Validating transaction before signing...", category: .blockchain)
-        
         guard !transaction.operations.isEmpty else {
             Logger.logError("Transaction has no operations", category: .blockchain)
             throw AppError.wallet(.signingFailed("Transaction signing failed"))
         }
-        Logger.logDebug("Transaction has \(transaction.operations.count) operation(s)", category: .blockchain)
         
-        let minFeePerOperation: Int64 = 100
-        let requiredMinFee = minFeePerOperation * Int64(transaction.operations.count)
-        if transaction.fee < requiredMinFee {
-            Logger.logError("Transaction fee (\(transaction.fee)) is below minimum (\(requiredMinFee))", category: .blockchain)
-            throw AppError.wallet(.signingFailed("Transaction signing failed"))
-        }
-        Logger.logDebug("Transaction fee validated: \(transaction.fee) stroops (minimum: \(requiredMinFee))", category: .blockchain)
-        
-        Logger.logDebug("Transaction validation passed, signing...", category: .blockchain)
-        
-        // Determine network
         let network: Network
         switch AppConfig.shared.currentNetwork {
         case .testnet:
@@ -126,18 +100,13 @@ final class WalletService {
             network = .public
         }
         
-        // Sign the transaction (modifies the transaction object in place)
         try transaction.sign(keyPair: keyPair, network: network)
-        Logger.logDebug("Transaction signed successfully", category: .blockchain)
     }
     
     /// Logout - clear stored wallet
     func logout() throws {
         try secureKeyStorage.deletePrivateKey()
         UserDefaults.standard.removeObject(forKey: addressKey)
-        if UserDefaults.standard.string(forKey: addressKey) != nil {
-            UserDefaults.standard.removeObject(forKey: addressKey)
-        }
     }
 }
 

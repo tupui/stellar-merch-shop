@@ -46,43 +46,28 @@ final class TransferService {
             throw AppError.validation("Invalid contract ID in NFC chip")
         }
 
-        Logger.logDebug("Contract ID from chip: \(contractId)", category: .blockchain)
-
-        // Validate contract ID format
         guard config.validateContractId(contractId) else {
             Logger.logError("Invalid contract ID format: \(contractId)", category: .blockchain)
-            Logger.logError("Contract ID should be 56 characters, start with 'C'", category: .blockchain)
             throw AppError.validation("Invalid contract ID format. Contract ID must be 56 characters and start with 'C'.")
         }
 
-        // Validate recipient address
         guard config.validateStellarAddress(recipientAddress) else {
             Logger.logError("Invalid recipient address: \(recipientAddress)", category: .blockchain)
             throw AppError.validation("Invalid recipient address format. Please enter a valid Stellar address.")
         }
 
-        Logger.logDebug("Contract ID: \(contractId)", category: .blockchain)
-        Logger.logDebug("Contract ID length: \(contractId.count)", category: .blockchain)
-        Logger.logDebug("Wallet address: \(wallet.address)", category: .blockchain)
-        Logger.logDebug("Recipient address: \(recipientAddress)", category: .blockchain)
-        Logger.logDebug("Token ID: \(tokenId)", category: .blockchain)
-
         progressCallback?("Reading chip information...")
         let chipPublicKey = try await ChipOperations.readChipPublicKey(tag: tag, session: session, keyIndex: keyIndex)
 
-        // Convert hex string to Data (65 bytes, uncompressed)
         guard let publicKeyData = Data(hexString: chipPublicKey),
               publicKeyData.count == 65,
               publicKeyData[0] == 0x04 else {
             throw AppError.crypto(.invalidKey("Invalid public key format from chip. Please ensure you're using a compatible NFC chip."))
         }
 
-        // Use wallet address for read-only queries (no private key needed)
         let accountId = wallet.address
 
-        // Validate that the chip's public key corresponds to the token ID
         progressCallback?("Validating chip ownership...")
-        Logger.logDebug("Validating that chip corresponds to token ID \(tokenId)", category: .blockchain)
         do {
             let expectedTokenId = try await blockchainService.getTokenId(
                 contractId: contractId,
@@ -92,7 +77,6 @@ final class TransferService {
             guard expectedTokenId == tokenId else {
                 throw AppError.validation("This NFC chip does not correspond to token ID \(tokenId). Expected token ID: \(expectedTokenId)")
             }
-            Logger.logDebug("Chip validation successful - corresponds to token ID \(tokenId)", category: .blockchain)
         } catch let error as AppError {
             if case .blockchain(.contract(.nonExistentToken)) = error {
                 throw AppError.validation("This NFC chip is not registered with the contract")
@@ -102,9 +86,7 @@ final class TransferService {
             }
         }
 
-        // Get nonce from contract (read-only, no private key needed)
         progressCallback?("Preparing transaction...")
-        Logger.logDebug("Getting nonce for contract: \(contractId)", category: .blockchain)
         let currentNonce: UInt32
         do {
             currentNonce = try await blockchainService.getNonce(
@@ -116,16 +98,14 @@ final class TransferService {
             if case .blockchain(.contract) = appError {
                 throw appError
             }
-            Logger.logError("ERROR getting nonce: \(appError)", category: .blockchain)
+            Logger.logError("Failed to get nonce: \(appError)", category: .blockchain)
             throw AppError.nfc(.chipError("Failed to get nonce: \(appError.localizedDescription)"))
         } catch {
-            Logger.logError("ERROR getting nonce: \(error)", category: .blockchain)
+            Logger.logError("Failed to get nonce: \(error)", category: .blockchain)
             throw AppError.nfc(.chipError("Failed to get nonce: \(error.localizedDescription)"))
         }
         let nonce = currentNonce + 1
-        Logger.logDebug("Using nonce: \(nonce) (previous: \(currentNonce))", category: .blockchain)
 
-        progressCallback?("Preparing transaction...")
         let (message, messageHash) = try CryptoUtils.createSEP53Message(
             contractId: contractId,
             functionName: "transfer",
@@ -133,10 +113,6 @@ final class TransferService {
             nonce: nonce,
             networkPassphrase: config.networkPassphrase
         )
-
-        Logger.logDebug("SEP-53 message length: \(message.count)", category: .crypto)
-        Logger.logDebug("SEP-53 message (hex): \(message.map { String(format: "%02x", $0) }.joined())", category: .crypto)
-        Logger.logDebug("Message hash (hex): \(messageHash.map { String(format: "%02x", $0) }.joined())", category: .crypto)
 
         progressCallback?("Signing transaction...")
         let signatureComponents = try await ChipOperations.signWithChip(
@@ -146,23 +122,9 @@ final class TransferService {
             keyIndex: keyIndex
         )
 
-        // Normalize S value (required by Soroban's secp256k1_recover)
         let originalS = signatureComponents.s
         let normalizedS = CryptoUtils.normalizeS(originalS)
 
-        let rHex = signatureComponents.r.map { String(format: "%02x", $0) }.joined()
-        let sOriginalHex = originalS.map { String(format: "%02x", $0) }.joined()
-        let sNormalizedHex = normalizedS.map { String(format: "%02x", $0) }.joined()
-        Logger.logDebug("Signature r (hex): \(rHex)", category: .crypto)
-        Logger.logDebug("Signature s original (hex): \(sOriginalHex)", category: .crypto)
-        Logger.logDebug("Signature s normalized (hex): \(sNormalizedHex)", category: .crypto)
-        if originalS != normalizedS {
-            Logger.logDebug("S value was normalized (s > half_order)", category: .crypto)
-        } else {
-            Logger.logDebug("S value already normalized (s <= half_order)", category: .crypto)
-        }
-
-        // Build signature (r + normalized s) - 64 bytes total
         var signature = Data()
         signature.append(signatureComponents.r)
         signature.append(normalizedS)
@@ -171,38 +133,25 @@ final class TransferService {
             throw AppError.crypto(.invalidSignature)
         }
 
-        let signatureHex = signature.map { String(format: "%02x", $0) }.joined()
-        Logger.logDebug("Final signature (r+s, hex): \(signatureHex)", category: .crypto)
-
-        // Get keypair for transaction building and signing (requires biometric auth)
-        let secureStorage = SecureKeyStorage()
-        let sourceKeyPair = try secureStorage.withPrivateKey(reason: "Authenticate to sign the transaction", work: { key in
-            try KeyPair(secretSeed: key)
-        })
+        let sourceKeyPair = try KeyPair(accountId: wallet.address)
         
-        // Determine recovery ID offline
-        progressCallback?("Preparing transaction...")
-        Logger.logDebug("Determining recovery ID offline...", category: .blockchain)
         let recoveryId: UInt32
         do {
             recoveryId = try await blockchainService.determineRecoveryId(
                 contractId: contractId,
-                claimant: wallet.address,
+                method: .transfer(from: wallet.address, to: recipientAddress, tokenId: tokenId),
                 message: message,
                 signature: signature,
                 publicKey: publicKeyData,
                 nonce: nonce,
                 sourceKeyPair: sourceKeyPair
             )
-            Logger.logDebug("Recovery ID determined: \(recoveryId)", category: .blockchain)
         } catch {
-            Logger.logError("ERROR determining recovery ID: \(error)", category: .blockchain)
+            Logger.logError("Failed to determine recovery ID: \(error)", category: .blockchain)
             throw AppError.crypto(.verificationFailed)
         }
 
-        // Build transaction with the correct recovery ID
         progressCallback?("Building transaction...")
-        Logger.logDebug("Building transaction with recovery ID \(recoveryId)...", category: .blockchain)
         let transaction: Transaction
         do {
             transaction = try await blockchainService.buildTransferTransaction(
@@ -217,7 +166,6 @@ final class TransferService {
                 nonce: nonce,
                 sourceKeyPair: sourceKeyPair
             )
-            Logger.logInfo("Transaction built successfully", category: .blockchain)
         } catch let appError as AppError {
             if case .blockchain(.contract) = appError {
                 throw appError
@@ -236,12 +184,20 @@ final class TransferService {
         let txHash: String
         do {
             txHash = try await blockchainService.submitTransaction(transaction, progressCallback: progressCallback)
+            Logger.logInfo("Transfer transaction submitted successfully: \(txHash)", category: .blockchain)
         } catch let appError as AppError {
-            if case .blockchain(.contract) = appError {
+            if case .blockchain(.contract(let contractError)) = appError {
+                Logger.logError("Transfer failed with contract error: \(contractError) (code: \(contractError.code))", category: .blockchain)
+                Logger.logError("Transfer context: from=\(wallet.address), to=\(recipientAddress), tokenId=\(tokenId)", category: .blockchain)
+                if case .tokenAlreadyMinted = contractError {
+                    Logger.logError("WARNING: TokenAlreadyMinted (210) occurred during transfer - this should not happen!", category: .blockchain)
+                }
                 throw appError
             }
+            Logger.logError("Transfer failed with error: \(appError)", category: .blockchain)
             throw AppError.blockchain(.networkError("Failed to submit transaction: \(appError.localizedDescription)"))
         } catch {
+            Logger.logError("Transfer failed with unexpected error: \(error)", category: .blockchain)
             throw AppError.blockchain(.networkError("Failed to submit transaction: \(error.localizedDescription)"))
         }
 

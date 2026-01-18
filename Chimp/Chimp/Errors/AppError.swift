@@ -230,6 +230,8 @@ enum ContractError: LocalizedError {
         if errorString.contains("207") || errorString.contains("InvalidAmount") {
             return .invalidAmount
         }
+        // Error 210 (TokenAlreadyMinted) is only used in claim() and mint() functions, never in transfer()
+        // If this error appears during transfer, it indicates a bug in recovery-id determination
         if errorString.contains("210") ||
            errorString.contains("TokenAlreadyMinted") ||
            (errorString.contains("already") && errorString.contains("minted")) {
