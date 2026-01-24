@@ -29,15 +29,15 @@ import OSLog
 /// Contains the handlers to transmit APDU commands
 class CommandHandler{
     var tag: NFCISO7816Tag
-    var reader_session: NFCTagReaderSession
+    var readerSession: NFCTagReaderSession
     
     /// Initialize the command handler with CoreNFC handles
     /// - Parameters:
     ///   - tag_iso7816: ISO7816 tag handle for communication with the tag
-    ///   - reader_session: NFCTagReaderSession  handle for communication with the tag
-    init(tag_iso7816: NFCISO7816Tag, reader_session: NFCTagReaderSession) {
+    ///   - readerSession: NFCTagReaderSession  handle for communication with the tag
+    init(tag_iso7816: NFCISO7816Tag, readerSession: NFCTagReaderSession) {
         self.tag = tag_iso7816
-        self.reader_session = reader_session
+        self.readerSession = readerSession
     }
     
     /// Transmits the command APDU to the NFC tag and returns the response on the response event handler

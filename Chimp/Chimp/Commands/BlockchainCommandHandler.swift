@@ -41,15 +41,15 @@ class BlockchainCommandHandler: CommandHandler {
     
     /// Action completion handler, which is called when the command excahges are completed
     var OnActionCompleted: ((Bool, Data?, String?, NFCTagReaderSession) -> ())?
-    var key_index: UInt8 = 0x01
-    var message_digest: Data?
+    var keyIndex: UInt8 = 0x01
+    var messageDigest: Data?
     
     /// Triggers the APDU exchanges to get the public-key from the card
     /// - Parameters:
-    ///   - key_index: Key index of the public-key. Must be >0.
+    ///   - keyIndex: Key index of the public-key. Must be >0.
     ///   - completion_handler: Handler method to be called when the action is completed
-    func ActionGetKey(key_index: UInt8, completion_handler: @escaping (Bool, Data?,String?,NFCTagReaderSession) -> Void) {
-        self.key_index = key_index
+    func getKey(keyIndex: UInt8, completion_handler: @escaping (Bool, Data?,String?,NFCTagReaderSession) -> Void) {
+        self.keyIndex = keyIndex
         self.OnActionCompleted = completion_handler
         
         SelectApplication()
@@ -64,7 +64,7 @@ class BlockchainCommandHandler: CommandHandler {
             Transmit(command: apdu, on_response_event: OnSelectApplicationCompleted)
         } catch {
             Logger.logError("Failed to create SELECT_APPLICATION command", error: error, category: .nfc)
-            OnActionCompleted?(false, nil, "Failed to create APDU command: \(error.localizedDescription)", reader_session)
+            OnActionCompleted?(false, nil, "Failed to create APDU command: \(error.localizedDescription)", readerSession)
         }
     }
     
@@ -73,7 +73,7 @@ class BlockchainCommandHandler: CommandHandler {
     private func OnSelectApplicationCompleted(response: APDUResponse) {
         if(!response.IsSuccessSW()) {
             Logger.logError("Response: SELECT_APPLICATION Failed: \(response.GetSWHex())", category: .nfc)
-            OnActionCompleted?(false, nil, "SELECT_APP SW: " + response.GetSWHex(), reader_session)
+            OnActionCompleted?(false, nil, "SELECT_APP SW: " + response.GetSWHex(), readerSession)
             return
         }
         Logger.logDebug("Response: SELECT_APPLICATION Success", category: .nfc)
@@ -87,7 +87,7 @@ class BlockchainCommandHandler: CommandHandler {
     /// - Returns: GET_KEY_INFO command
     private func GetKeyInfoCommand() -> Data {
         var command = ADPU_GET_KEY_INFO
-        command[2] = key_index
+        command[2] = keyIndex
         return command
     }
     
@@ -99,7 +99,7 @@ class BlockchainCommandHandler: CommandHandler {
             Transmit(command: apdu, on_response_event: OnGetKeyInfoCompleted)
         } catch {
             Logger.logError("Failed to create GET_KEY_INFO command", error: error, category: .nfc)
-            OnActionCompleted?(false, nil, "Failed to create APDU command: \(error.localizedDescription)", reader_session)
+            OnActionCompleted?(false, nil, "Failed to create APDU command: \(error.localizedDescription)", readerSession)
         }
     }
     
@@ -110,7 +110,7 @@ class BlockchainCommandHandler: CommandHandler {
              Logger.logDebug("Response: GET_KEY_INFO Success", category: .nfc)
             
             // Complete the action
-            OnActionCompleted?(true, response.data, nil, reader_session)
+            OnActionCompleted?(true, response.data, nil, readerSession)
         }else{
              Logger.logWarning("Response: GET_KEY_INFO Failed: \(response.GetSWHex())", category: .nfc)
             
@@ -118,7 +118,7 @@ class BlockchainCommandHandler: CommandHandler {
             if(response.CheckSW(sw: APDUResponse.SW_KEY_WITH_IDX_NOT_AVAILABLE)) {
                 GenerateNewSecp256K1Keypair()
             } else {
-                OnActionCompleted?(false, nil, "GET_KEY_INFO SW: " + response.GetSWHex(), reader_session)
+                OnActionCompleted?(false, nil, "GET_KEY_INFO SW: " + response.GetSWHex(), readerSession)
             }
         }
     }
@@ -132,7 +132,7 @@ class BlockchainCommandHandler: CommandHandler {
             Transmit(command: apdu, on_response_event: OnGenerateNewSecp256K1KeypairCompleted)
         } catch {
             Logger.logError("Failed to create GENERATE_KEY command", error: error, category: .nfc)
-            OnActionCompleted?(false, nil, "Failed to create APDU command: \(error.localizedDescription)", reader_session)
+            OnActionCompleted?(false, nil, "Failed to create APDU command: \(error.localizedDescription)", readerSession)
         }
     }
     
@@ -145,15 +145,15 @@ class BlockchainCommandHandler: CommandHandler {
             // Response data contains the generated key index
             guard let responseData = response.data, responseData.count == 1 else {
                  Logger.logError("GENERATE_KEY invalid response - Doesn't have generated key index", category: .nfc)
-                OnActionCompleted?(false, nil, "Invalid GENERATE_KEY response", reader_session)
+                OnActionCompleted?(false, nil, "Invalid GENERATE_KEY response", readerSession)
                 return
             }
 
             Logger.logDebug("Response: GENERATE_KEY Success", category: .nfc)
 
             // Newly generated key's index
-            let new_key_index = responseData[0]
-            if(new_key_index < key_index) {
+            let newKeyIndex = responseData[0]
+            if(newKeyIndex < keyIndex) {
                 Logger.logDebug("Required key index not generated yet. Generating keypair again.", category: .nfc)
                 GenerateNewSecp256K1Keypair()
             }
@@ -166,9 +166,9 @@ class BlockchainCommandHandler: CommandHandler {
             
             if(response.CheckSW(sw: APDUResponse.SW_KEY_STORAGE_FULL)) {
                 Logger.logError("Key storage is full", category: .nfc)
-                OnActionCompleted?(false, nil, "Key storage is full", reader_session)
+                OnActionCompleted?(false, nil, "Key storage is full", readerSession)
             } else {
-                OnActionCompleted?(false, nil, "GENERATE_KEY SW: " + response.GetSWHex(), reader_session)
+                OnActionCompleted?(false, nil, "GENERATE_KEY SW: " + response.GetSWHex(), readerSession)
             }
         }
     }
@@ -176,22 +176,21 @@ class BlockchainCommandHandler: CommandHandler {
     // MARK: - Command handler - GENERATE_SIGNATURE
     /// Triggers the APDU exchanges to generate a signature from the card
     /// - Parameters:
-    ///   - key_index: Key index to use for signing. Must be >0.
-    ///   - message_digest: 32-byte message digest to sign
+    ///   - keyIndex: Key index to use for signing. Must be >0.
+    ///   - messageDigest: 32-byte message digest to sign
     ///   - completion_handler: Handler method to be called when the action is completed
-    func ActionGenerateSignature(key_index: UInt8, message_digest: Data, completion_handler: @escaping (Bool, Data?,String?,NFCTagReaderSession) -> Void) {
-        self.key_index = key_index
-        self.message_digest = message_digest
+    func generateSignature(keyIndex: UInt8, messageDigest: Data, completion_handler: @escaping (Bool, Data?,String?,NFCTagReaderSession) -> Void) {
+        self.keyIndex = keyIndex
+        self.messageDigest = messageDigest
         self.OnActionCompleted = completion_handler
         
         // Validate message digest is exactly 32 bytes
-        if message_digest.count != 32 {
-            Logger.logError("Message digest must be exactly 32 bytes, got \(message_digest.count)", category: .nfc)
-            OnActionCompleted?(false, nil, "Invalid message digest length: \(message_digest.count) bytes", reader_session)
+        if messageDigest.count != 32 {
+            Logger.logError("Message digest must be exactly 32 bytes, got \(messageDigest.count)", category: .nfc)
+            OnActionCompleted?(false, nil, "Invalid message digest length: \(messageDigest.count) bytes", readerSession)
             return
         }
         
-        Logger.logDebug("ActionGenerateSignature - key_index: \(key_index), message_digest: \(message_digest.hexEncodedString())", category: .nfc)
         SelectApplicationForSignature()
     }
     
@@ -203,7 +202,7 @@ class BlockchainCommandHandler: CommandHandler {
             Transmit(command: apdu, on_response_event: OnSelectApplicationForSignatureCompleted)
         } catch {
             Logger.logError("Failed to create SELECT_APPLICATION command for signature", error: error, category: .nfc)
-            OnActionCompleted?(false, nil, "Failed to create APDU command: \(error.localizedDescription)", reader_session)
+            OnActionCompleted?(false, nil, "Failed to create APDU command: \(error.localizedDescription)", readerSession)
         }
     }
     
@@ -212,7 +211,7 @@ class BlockchainCommandHandler: CommandHandler {
     private func OnSelectApplicationForSignatureCompleted(response: APDUResponse) {
         if(!response.IsSuccessSW()) {
             Logger.logError("Response: SELECT_APPLICATION Failed: \(response.GetSWHex())", category: .nfc)
-            OnActionCompleted?(false, nil, "SELECT_APP SW: " + response.GetSWHex(), reader_session)
+            OnActionCompleted?(false, nil, "SELECT_APP SW: " + response.GetSWHex(), readerSession)
             return
         }
         Logger.logDebug("Response: SELECT_APPLICATION Success", category: .nfc)
@@ -224,18 +223,18 @@ class BlockchainCommandHandler: CommandHandler {
     /// Frames the GENERATE_SIGNATURE command with the key index and message digest
     /// - Returns: GENERATE_SIGNATURE command
     private func GenerateSignatureCommand() -> Data {
-        // APDU format: [0x00, 0x18, key_index, 0x00, 0x20] + message_digest (32 bytes) + [0x00]
+        // APDU format: [0x00, 0x18, keyIndex, 0x00, 0x20] + messageDigest (32 bytes) + [0x00]
         var command = Data()
         command.append(0x00)  // CLA
         command.append(0x18)  // INS (GENERATE_SIGNATURE)
-        command.append(key_index)  // P1 (key index)
+        command.append(keyIndex)  // P1 (key index)
         command.append(0x00)  // P2
         command.append(0x20)  // Lc (32 bytes)
 
-        if let digest = message_digest {
+        if let digest = messageDigest {
             command.append(digest)  // Message digest (32 bytes)
         } else {
-            Logger.logError("message_digest is nil in GenerateSignatureCommand", category: .nfc)
+            Logger.logError("messageDigest is nil in GenerateSignatureCommand", category: .nfc)
             // Append zeros as fallback
             command.append(Data(repeating: 0, count: 32))
         }
@@ -248,14 +247,12 @@ class BlockchainCommandHandler: CommandHandler {
     /// Sends the GENERATE_SIGNATURE command to the card
     private func GenerateSignature() {
         let command = GenerateSignatureCommand()
-        Logger.logDebug("Transmit: GENERATE_SIGNATURE", category: .nfc)
-        Logger.logDebug("Command (hex): \(command.hexEncodedString())", category: .nfc)
         do {
             let apdu = try APDUCommand(command: command)
             Transmit(command: apdu, on_response_event: OnGenerateSignatureCompleted)
         } catch {
             Logger.logError("Failed to create GENERATE_SIGNATURE command", error: error, category: .nfc)
-            OnActionCompleted?(false, nil, "Failed to create APDU command: \(error.localizedDescription)", reader_session)
+            OnActionCompleted?(false, nil, "Failed to create APDU command: \(error.localizedDescription)", readerSession)
         }
     }
     
@@ -263,28 +260,13 @@ class BlockchainCommandHandler: CommandHandler {
     /// - Parameter response: Response of GENERATE_SIGNATURE
     private func OnGenerateSignatureCompleted(response: APDUResponse) {
         if(response.IsSuccessSW()) {
-            Logger.logDebug("Response: GENERATE_SIGNATURE Success", category: .nfc)
-            Logger.logDebug("Response (hex): \(response.data?.hexEncodedString() ?? "nil")", category: .nfc)
-            
             // Response format: 4 bytes global counter + 4 bytes key counter + DER signature
-            if let data = response.data {
-                if data.count >= 8 {
-                    let globalCounter = data.subdata(in: 0..<4)
-                    let keyCounter = data.subdata(in: 4..<8)
-                    let derSignature = data.subdata(in: 8..<data.count)
-                    
-                    Logger.logDebug("Global counter (hex): \(globalCounter.hexEncodedString())", category: .nfc)
-                    Logger.logDebug("Key counter (hex): \(keyCounter.hexEncodedString())", category: .nfc)
-                    Logger.logDebug("DER signature (hex): \(derSignature.hexEncodedString())", category: .nfc)
-                    Logger.logDebug("DER signature length: \(derSignature.count) bytes", category: .nfc)
-                }
-            }
             
             // Complete the action with full response
-            OnActionCompleted?(true, response.data, nil, reader_session)
+            OnActionCompleted?(true, response.data, nil, readerSession)
         } else {
             Logger.logError("Response: GENERATE_SIGNATURE Failed: \(response.GetSWHex())", category: .nfc)
-            OnActionCompleted?(false, nil, "GENERATE_SIGNATURE SW: " + response.GetSWHex(), reader_session)
+            OnActionCompleted?(false, nil, "GENERATE_SIGNATURE SW: " + response.GetSWHex(), readerSession)
         }
     }
 }

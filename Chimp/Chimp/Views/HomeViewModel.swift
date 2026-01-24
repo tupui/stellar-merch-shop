@@ -129,13 +129,9 @@ class HomeViewModel: ObservableObject {
         // Cancel any existing timer
         errorTimeoutTimer?.invalidate()
         
-        // Create new timer for 5-second auto-dismiss
-        // scheduledTimer already adds to the current (main) run loop
         errorTimeoutTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-            // Timer runs on main thread, use MainActor to safely mutate property
             Task { @MainActor in
-                self.errorMessage = nil
+                self?.errorMessage = nil
             }
         }
     }

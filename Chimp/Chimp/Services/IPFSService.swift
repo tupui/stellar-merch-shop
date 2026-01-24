@@ -49,7 +49,6 @@ final class IPFSService {
     /// - Returns: NFT metadata
     /// - Throws: AppError if download or parsing fails
     func downloadNFTMetadata(from ipfsUrl: String) async throws -> NFTMetadata {
-        Logger.logDebug("Downloading NFT metadata from: \(ipfsUrl)", category: .network)
 
         guard let url = URL(string: ipfsUrl) else {
             throw AppError.ipfs(.invalidHash)
@@ -69,7 +68,6 @@ final class IPFSService {
         if let responseString = String(data: data, encoding: .utf8) {
             if responseString.hasPrefix("<!DOCTYPE") || responseString.hasPrefix("<html") || responseString.contains("<html") {
                 Logger.logError("Received HTML instead of JSON. This might be an IPFS gateway error page.", category: .network)
-                Logger.logDebug("Response preview: \(responseString.prefix(200))...", category: .network)
                 throw AppError.ipfs(.parseFailed("IPFS gateway returned HTML error page instead of JSON"))
             }
         }
@@ -79,9 +77,6 @@ final class IPFSService {
         do {
             let metadata = try decoder.decode(NFTMetadata.self, from: data)
             Logger.logDebug("Successfully parsed NFT metadata", category: .network)
-            Logger.logDebug("Name: \(metadata.name ?? "N/A")", category: .network)
-            Logger.logDebug("Description: \(metadata.description ?? "N/A")", category: .network)
-            Logger.logDebug("Image: \(metadata.image ?? "N/A")", category: .network)
             return metadata
         } catch {
             Logger.logError("Failed to parse JSON: \(error)", category: .network)
@@ -97,7 +92,6 @@ final class IPFSService {
     /// - Returns: Image data
     /// - Throws: AppError if download fails
     func downloadImageData(from ipfsUrl: String) async throws -> Data {
-        Logger.logDebug("Downloading image from: \(ipfsUrl)", category: .network)
 
         guard let url = URL(string: ipfsUrl) else {
             throw AppError.ipfs(.invalidHash)
@@ -122,7 +116,6 @@ final class IPFSService {
     func convertToHTTPGateway(_ ipfsUrl: String) -> String {
         // If it's already an HTTP/HTTPS URL, return as-is
         if ipfsUrl.hasPrefix("http://") || ipfsUrl.hasPrefix("https://") {
-            Logger.logDebug("URL is already HTTP: \(ipfsUrl)", category: .network)
             return ipfsUrl
         }
 

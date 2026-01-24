@@ -59,13 +59,6 @@ final class BlockchainHelpers {
         )
     }
     
-    /// Validate contract ID format
-    /// - Parameter contractId: Contract ID to validate
-    /// - Returns: true if valid, false otherwise
-    static func validateContractId(_ contractId: String) -> Bool {
-        return config.validateContractId(contractId)
-    }
-    
     /// Check if error is a contract error and convert it
     /// - Parameter error: Error to check
     /// - Returns: AppError with contract error if applicable, nil otherwise

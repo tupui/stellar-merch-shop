@@ -9,6 +9,41 @@ final class NDEFReader {
     /// NDEF File ID
     private static let NDEF_FILE_ID: [UInt8] = [0xE1, 0x04]
     
+    // MARK: - Shared APDU Helpers
+    
+    /// Send APDU command and check status word
+    /// - Parameters:
+    ///   - apdu: APDU command to send
+    ///   - tag: NFCISO7816Tag for chip communication
+    /// - Returns: Response data if successful
+    /// - Throws: AppError if command fails or SW indicates error
+    private static func sendAPDU(_ apdu: NFCISO7816APDU, tag: NFCISO7816Tag) async throws -> Data {
+        let (data, sw1, sw2) = try await tag.sendCommand(apdu: apdu)
+        
+        guard sw1 == 0x90 && sw2 == 0x00 else {
+            throw AppError.nfc(.readWriteFailed("APDU command failed: SW=\(String(format: "%02X%02X", sw1, sw2))"))
+        }
+        
+        return data
+    }
+    
+    /// Select NDEF application and file
+    /// - Parameter tag: NFCISO7816Tag for chip communication
+    /// - Throws: AppError if selection fails
+    private static func selectNDEFAppAndFile(tag: NFCISO7816Tag) async throws {
+        // Select NDEF Application
+        guard let selectAppAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x04, 0x00] + [UInt8(NDEF_AID.count)] + NDEF_AID + [0x00])) else {
+            throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF Application APDU"))
+        }
+        _ = try await sendAPDU(selectAppAPDU, tag: tag)
+        
+        // Select NDEF File
+        guard let selectFileAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x00, 0x0C, 0x02] + NDEF_FILE_ID)) else {
+            throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF File APDU"))
+        }
+        _ = try await sendAPDU(selectFileAPDU, tag: tag)
+    }
+    
     /// Read NDEF URL from chip using APDU commands
     /// - Parameters:
     ///   - tag: NFCISO7816Tag for chip communication
@@ -17,33 +52,14 @@ final class NDEFReader {
     /// - Throws: AppError if reading fails
     static func readNDEFUrl(tag: NFCISO7816Tag, session: NFCTagReaderSession) async throws -> String? {
         do {
-            guard let selectAppAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x04, 0x00] + [UInt8(NDEF_AID.count)] + NDEF_AID + [0x00])) else {
-                throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF Application APDU"))
-            }
-            let (_, selectAppSW1, selectAppSW2) = try await tag.sendCommand(apdu: selectAppAPDU)
-            
-            guard selectAppSW1 == 0x90 && selectAppSW2 == 0x00 else {
-                throw AppError.nfc(.readWriteFailed("Failed to select NDEF application: \(selectAppSW1) \(selectAppSW2)"))
-            }
-            
-            guard let selectFileAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x00, 0x0C, 0x02] + NDEF_FILE_ID)) else {
-                throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF File APDU"))
-            }
-            let (_, selectFileSW1, selectFileSW2) = try await tag.sendCommand(apdu: selectFileAPDU)
-            
-            guard selectFileSW1 == 0x90 && selectFileSW2 == 0x00 else {
-                throw AppError.nfc(.readWriteFailed("Failed to select NDEF file: \(selectFileSW1) \(selectFileSW2)"))
-            }
+            // Select NDEF application and file
+            try await selectNDEFAppAndFile(tag: tag)
             
             // Read NLEN (2 bytes at offset 0) to get NDEF message length
             guard let readNlenAPDU = NFCISO7816APDU(data: Data([0x00, 0xB0, 0x00, 0x00, 0x02])) else {
                 throw AppError.nfc(.readWriteFailed("Failed to create READ NLEN APDU"))
             }
-            let (readNlenData, readNlenSW1, readNlenSW2) = try await tag.sendCommand(apdu: readNlenAPDU)
-            
-            guard readNlenSW1 == 0x90 && readNlenSW2 == 0x00 else {
-                throw AppError.nfc(.readWriteFailed("Failed to read NLEN: \(readNlenSW1) \(readNlenSW2)"))
-            }
+            let readNlenData = try await sendAPDU(readNlenAPDU, tag: tag)
             
             guard readNlenData.count >= 2 else {
                 throw AppError.nfc(.readWriteFailed("Invalid NLEN data length: expected 2 bytes, got \(readNlenData.count)"))
@@ -71,12 +87,7 @@ final class NDEFReader {
                     throw AppError.nfc(.readWriteFailed("Failed to create READ BINARY APDU"))
                 }
                 
-                let (readData, readSW1, readSW2) = try await tag.sendCommand(apdu: readBinaryAPDU)
-                
-                guard readSW1 == 0x90 && readSW2 == 0x00 else {
-                    throw AppError.nfc(.readWriteFailed("Failed to read NDEF data chunk: \(readSW1) \(readSW2)"))
-                }
-                
+                let readData = try await sendAPDU(readBinaryAPDU, tag: tag)
                 ndefData.append(readData)
                 currentOffset += UInt16(bytesToRead)
             }
@@ -99,23 +110,8 @@ final class NDEFReader {
         }
         
         do {
-            guard let selectAppAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x04, 0x00] + [UInt8(NDEF_AID.count)] + NDEF_AID + [0x00])) else {
-                throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF Application APDU"))
-            }
-            let (_, selectAppSW1, selectAppSW2) = try await tag.sendCommand(apdu: selectAppAPDU)
-            
-            guard selectAppSW1 == 0x90 && selectAppSW2 == 0x00 else {
-                throw AppError.nfc(.readWriteFailed("Failed to select NDEF application: \(selectAppSW1) \(selectAppSW2)"))
-            }
-            
-            guard let selectFileAPDU = NFCISO7816APDU(data: Data([0x00, 0xA4, 0x00, 0x0C, 0x02] + NDEF_FILE_ID)) else {
-                throw AppError.nfc(.readWriteFailed("Failed to create SELECT NDEF File APDU"))
-            }
-            let (_, selectFileSW1, selectFileSW2) = try await tag.sendCommand(apdu: selectFileAPDU)
-            
-            guard selectFileSW1 == 0x90 && selectFileSW2 == 0x00 else {
-                throw AppError.nfc(.readWriteFailed("Failed to select NDEF file: \(selectFileSW1) \(selectFileSW2)"))
-            }
+            // Select NDEF application and file
+            try await selectNDEFAppAndFile(tag: tag)
             
             // Write NLEN (NDEF message length)
             let nlen = UInt16(ndefBytes.count)
@@ -123,11 +119,7 @@ final class NDEFReader {
             guard let writeNlenAPDU = NFCISO7816APDU(data: Data([0x00, 0xD6, 0x00, 0x00, 0x02] + nlenBytes)) else {
                 throw AppError.nfc(.readWriteFailed("Failed to create WRITE NLEN APDU"))
             }
-            let (_, writeNlenSW1, writeNlenSW2) = try await tag.sendCommand(apdu: writeNlenAPDU)
-            
-            guard writeNlenSW1 == 0x90 && writeNlenSW2 == 0x00 else {
-                throw AppError.nfc(.readWriteFailed("Failed to write NLEN: \(writeNlenSW1) \(writeNlenSW2)"))
-            }
+            _ = try await sendAPDU(writeNlenAPDU, tag: tag)
             
             // Write NDEF data (starting from offset 2)
             var currentOffset: UInt16 = 2
@@ -146,12 +138,7 @@ final class NDEFReader {
                     throw AppError.nfc(.readWriteFailed("Failed to create UPDATE BINARY APDU"))
                 }
                 
-                let (_, writeSW1, writeSW2) = try await tag.sendCommand(apdu: updateBinaryAPDU)
-                
-                guard writeSW1 == 0x90 && writeSW2 == 0x00 else {
-                    throw AppError.nfc(.readWriteFailed("Failed to write NDEF chunk at offset \(currentOffset): \(writeSW1) \(writeSW2)"))
-                }
-                
+                _ = try await sendAPDU(updateBinaryAPDU, tag: tag)
                 currentOffset += UInt16(chunk.count)
             }
         }
@@ -166,7 +153,7 @@ final class NDEFReader {
         }
         
         // Parse NDEF record - try both parsing methods
-        // Method 1: Simple format (used in ClaimService, TransferService)
+        // Method 1: Simple format (used in NFTService)
         if let url = parseNDEFUrlSimple(from: data) {
             return url
         }

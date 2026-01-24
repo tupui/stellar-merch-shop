@@ -24,6 +24,33 @@ SOFTWARE.
 
 import Foundation
 
+// MARK: - APDU Command
+
+/// Stores the command APDU
+final class APDUCommand {
+    var command: Data
+    var cla: UInt8
+    var ins: UInt8
+    var p1: UInt8
+    var p2: UInt8
+    
+    /// Initializes the class with the APDU input
+    /// - Parameter command: Command APDU
+    /// - Throws: AppError if command is invalid
+    init(command: Data) throws {
+        guard command.count >= 4 else {
+            throw AppError.nfc(.readWriteFailed("APDU length must not be less than 4 bytes"))
+        }
+        self.command = command
+        self.cla = command[0]
+        self.ins = command[1]
+        self.p1 = command[2]
+        self.p2 = command[3]
+    }
+}
+
+// MARK: - APDU Response
+
 /// Stores the response APDU
 final class APDUResponse {
     public static let SW_SUCCESS: UInt16 = 0x9000;

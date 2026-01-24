@@ -34,15 +34,9 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
     private let nfcQueue = DispatchQueue(label: "com.consulting-manao.chimp.nfc", qos: .userInitiated)
     
     /// Stores the reader session handle
-    var reader_session: NFCTagReaderSession?
+    var readerSession: NFCTagReaderSession?
     /// Event handler which is called when the tag detection action is completed
     var OnTagEvent: ((Bool, NFCISO7816Tag?, NFCTagReaderSession?, String?) -> ())?
-
-    /// Event handler for NDEF reading operations
-    var OnNDEFEvent: ((Bool, String?, String?) -> ())?
-
-    /// Event handler for immediate error feedback during NFC operations
-    var OnImmediateError: ((String) -> ())?
     
     /// Timeout timer for 60-second session limit
     private var timeoutTimer: Timer?
@@ -63,7 +57,7 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
         timeoutTimer = nil
         
         // Clear session reference
-        reader_session = nil
+        readerSession = nil
         
         guard let OnTagEvent = OnTagEvent else {
             return
@@ -90,7 +84,6 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
                 // Session terminated unexpectedly
                 Logger.logWarning("ReaderSession: Session terminated unexpectedly", category: .nfc)
                 DispatchQueue.main.async {
-                    self.OnImmediateError?("NFC session ended unexpectedly. Please try again.")
                     OnTagEvent(false, nil, nil, "NFC session ended unexpectedly. Please try again.")
                 }
                 
@@ -98,7 +91,6 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
                 // System is busy
                 Logger.logWarning("ReaderSession: System is busy", category: .nfc)
                 DispatchQueue.main.async {
-                    self.OnImmediateError?("NFC system is busy. Please try again.")
                     OnTagEvent(false, nil, nil, "NFC system is busy. Please try again.")
                 }
                 
@@ -106,7 +98,6 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
                 // Session timeout (60 seconds)
                 Logger.logWarning("ReaderSession: Session timeout", category: .nfc)
                 DispatchQueue.main.async {
-                    self.OnImmediateError?("NFC session timed out. Please try again.")
                     OnTagEvent(false, nil, nil, "NFC session timed out. Please try again.")
                 }
                 
@@ -114,14 +105,14 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
                 // Other errors
                 Logger.logError("ReaderSession: Unknown error: \(error.localizedDescription)", category: .nfc)
                 DispatchQueue.main.async {
-                    OnTagEvent(false, nil, nil, "NFC error: \(error.localizedDescription)")
+                    OnTagEvent(false, nil, nil, "NFC session failed. Please try again.")
                 }
             }
         } else {
             // Non-NFCReaderError
             Logger.logError("ReaderSession: Non-NFC error: \(error.localizedDescription)", category: .nfc)
             DispatchQueue.main.async {
-                OnTagEvent(false, nil, nil, error.localizedDescription)
+                OnTagEvent(false, nil, nil, "NFC operation failed. Please try again.")
             }
         }
     }
@@ -137,12 +128,8 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
             Logger.logWarning("ReaderSession: Multiple tags found", category: .nfc)
             session.alertMessage = "Multiple tags found. Please use only one tag."
             DispatchQueue.main.async {
-                self.OnImmediateError?("Multiple tags found. Please use only one tag.")
                 if let OnTagEvent = self.OnTagEvent {
                     OnTagEvent(false, nil, nil, "Multiple tags found. Please use only one tag.")
-                }
-                if let OnNDEFEvent = self.OnNDEFEvent {
-                    OnNDEFEvent(false, nil, "Multiple tags found. Please use only one tag.")
                 }
             }
             EndSession()
@@ -152,12 +139,8 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
         guard let firstTag = tags.first else {
             Logger.logWarning("ReaderSession: No tags in array", category: .nfc)
             DispatchQueue.main.async {
-                self.OnImmediateError?("No tag detected")
                 if let OnTagEvent = self.OnTagEvent {
                     OnTagEvent(false, nil, nil, "No tag detected")
-                }
-                if let OnNDEFEvent = self.OnNDEFEvent {
-                    OnNDEFEvent(false, nil, "No tag detected")
                 }
             }
             return
@@ -170,39 +153,17 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
                     Logger.logError("ReaderSession: Connection error: \(error.localizedDescription)", category: .nfc)
                     DispatchQueue.main.async {
                         if let OnTagEvent = self.OnTagEvent {
-                            OnTagEvent(false, nil, nil, "Failed to connect to tag: \(error.localizedDescription)")
-                        }
-                        if let OnNDEFEvent = self.OnNDEFEvent {
-                            OnNDEFEvent(false, nil, "Failed to connect to tag: \(error.localizedDescription)")
+                            OnTagEvent(false, nil, nil, "Failed to connect to NFC tag. Please try again.")
                         }
                     }
                 } else {
                     Logger.logDebug("ReaderSession: Tag connected successfully", category: .nfc)
 
-                    // Check which operation we're doing
-                    if let OnNDEFEvent = self.OnNDEFEvent {
-                        // NDEF reading operation
-                        Task {
-                            do {
-                                let ndefUrl = try await NDEFReader.readNDEFUrl(tag: tag, session: session)
-                                DispatchQueue.main.async {
-                                    OnNDEFEvent(true, ndefUrl, nil)
-                                }
-                            } catch {
-                                DispatchQueue.main.async {
-                                    OnNDEFEvent(false, nil, error.localizedDescription)
-                                }
-                            }
-                        }
-                    } else if let OnTagEvent = self.OnTagEvent {
-                        // APDU operation - chip detected, user should hold steady
+                    // APDU operation - chip detected, user should hold steady
+                    if let OnTagEvent = self.OnTagEvent {
                         session.alertMessage = "Chip detected! Hold steady while processing..."
                         DispatchQueue.main.async {
                             OnTagEvent(true, tag, session, nil)
-                        }
-                        // For NDEF reading, we can close the session immediately since we have the data
-                        if self.OnNDEFEvent != nil {
-                            session.invalidate()
                         }
                     }
                 }
@@ -211,17 +172,13 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
             Logger.logWarning("ReaderSession: Tag is not ISO7816 compatible", category: .nfc)
             session.alertMessage = "Tag is not compatible"
             DispatchQueue.main.async {
-                self.OnImmediateError?("Tag is not compatible")
                 if let OnTagEvent = self.OnTagEvent {
                     OnTagEvent(false, nil, nil, "Tag is not ISO7816 compatible")
                 }
-                if let OnNDEFEvent = self.OnNDEFEvent {
-                    OnNDEFEvent(false, nil, "Tag is not ISO7816 compatible")
-                }
             }
-        EndSession()
+            EndSession()
+        }
     }
-}
     
     // MARK: - Helper methods
     /// Checks if the NFC reader is supported by this device
@@ -239,26 +196,26 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
         }
         
         // Prevent multiple active sessions (Apple best practice)
-        if reader_session != nil {
+        if readerSession != nil {
             Logger.logWarning("ReaderSession: Session already active, invalidating previous session", category: .nfc)
             EndSession()
         }
         
         // Create session with background queue (Apple best practice)
-        reader_session = NFCTagReaderSession(
+        readerSession = NFCTagReaderSession(
             pollingOption: [.iso14443],
             delegate: self,
             queue: nfcQueue
         )
         
-        reader_session?.alertMessage = "Hold your device near the NFC chip"
-        reader_session?.begin()
+        readerSession?.alertMessage = "Hold your device near the NFC chip"
+        readerSession?.begin()
         
         Logger.logDebug("ReaderSession: Begin", category: .nfc)
         
         // Set up timeout timer for 60-second limit (Apple's maximum) on main run loop
         timeoutTimer = Timer.scheduledTimer(withTimeInterval: maxSessionDuration, repeats: false) { [weak self] _ in
-            guard let self = self, let session = self.reader_session else { return }
+            guard let self = self, let session = self.readerSession else { return }
             Logger.logWarning("ReaderSession: Timeout reached (60 seconds)", category: .nfc)
             session.invalidate(errorMessage: "Session timed out. Please try again.")
         }
@@ -274,17 +231,9 @@ final class NFCHelper: NSObject, NFCTagReaderSessionDelegate {
         timeoutTimer?.invalidate()
         timeoutTimer = nil
 
-        reader_session?.invalidate()
-        reader_session = nil
+        readerSession?.invalidate()
+        readerSession = nil
 
         Logger.logDebug("ReaderSession: End", category: .nfc)
-    }
-
-    // MARK: - NDEF Operations
-
-
-    /// Read NDEF URL from chip using APDU commands
-    func readNDEFUrl(tag: NFCISO7816Tag, session: NFCTagReaderSession) async throws -> String? {
-        return try await NDEFReader.readNDEFUrl(tag: tag, session: session)
     }
 }

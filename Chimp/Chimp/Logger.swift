@@ -70,4 +70,3 @@ final class Logger {
         os_log("%{public}@: %{public}@", log: logger(for: category), type: .error, message, errorDescription)
     }
 }
-

@@ -7,9 +7,7 @@ import OSLog
 /// Coordinator to bridge SwiftUI to existing UIKit NFC functionality
 class NFCOperationCoordinator: NSObject {
     private let walletService = WalletService.shared
-    private let claimService = ClaimService()
-    private let transferService = TransferService()
-    private let mintService = MintService()
+    private let nftService = NFTService()
     private let blockchainService = BlockchainService()
     
     // Callbacks
@@ -36,21 +34,76 @@ class NFCOperationCoordinator: NSObject {
             return
         }
         
-        let session = NFCTagReaderSession(pollingOption: .iso14443, delegate: self, queue: nil)
-        session?.alertMessage = "Hold your iPhone near the chip to view NFT"
-        session?.begin()
-        
-        // Store completion for later
-        loadNFTCompletion = completion
+        // Store helper as property to prevent deallocation
+        loadNFTNFCHelper = NFCHelper()
+        loadNFTNFCHelper?.OnTagEvent = { [weak self] success, tag, session, error in
+            guard let self = self else { return }
+            if success, let tag = tag, let session = session {
+                Task { @MainActor in
+                    session.alertMessage = "Reading chip information..."
+                }
+                
+                Task.detached {
+                    do {
+                        // Read NDEF to get contract ID
+                        let ndefUrl = try await NDEFReader.readNDEFUrl(tag: tag, session: session)
+                        guard let ndefUrl = ndefUrl else {
+                            throw AppError.nfc(.readWriteFailed("No NDEF URL found"))
+                        }
+                        
+                        guard let contractId = NDEFReader.parseContractIdFromNDEFUrl(ndefUrl) else {
+                            throw AppError.validation("Invalid contract ID in NFC tag")
+                        }
+                        
+                        // Read chip public key
+                        let chipPublicKey = try await ChipOperations.readChipPublicKey(tag: tag, session: session, keyIndex: 0x01)
+                        guard let publicKeyData = Data(hexString: chipPublicKey) else {
+                            throw AppError.crypto(.invalidKey("Invalid public key format from chip"))
+                        }
+                        
+                        // Update session message before blockchain operation
+                        await MainActor.run {
+                            session.alertMessage = "Reading chip information..."
+                        }
+                        
+                        // Get token ID (this needs to happen while session is active for proper flow)
+                        let tokenId = try await self.getTokenIdForChip(contractId: contractId, publicKey: publicKeyData)
+                        
+                        // Close NFC session immediately after getting token ID
+                        await MainActor.run {
+                            session.alertMessage = "Chip information read successfully"
+                            session.invalidate()
+                            completion(true, nil)
+                            self.onLoadNFTSuccess?(contractId, tokenId)
+                            self.loadNFTNFCHelper = nil
+                        }
+                    } catch {
+                        await MainActor.run {
+                            let errorMessage = (error as? AppError)?.localizedDescription ?? "Failed to load NFT"
+                            session.invalidate(errorMessage: errorMessage)
+                            completion(false, errorMessage)
+                            self.onLoadNFTError?(errorMessage)
+                            self.loadNFTNFCHelper = nil
+                        }
+                    }
+                }
+            } else {
+                let errorMsg = error ?? "Failed to detect NFC tag"
+                completion(false, errorMsg)
+                self.onLoadNFTError?(errorMsg)
+                self.loadNFTNFCHelper = nil
+            }
+        }
+        loadNFTNFCHelper?.BeginSession()
     }
-    
-    private var loadNFTCompletion: ((Bool, String?) -> Void)?
     
     // Store NFCHelper instances to prevent deallocation
     private var claimNFCHelper: NFCHelper?
     private var transferNFCHelper: NFCHelper?
     private var transferReadNFCHelper: NFCHelper?
     private var mintNFCHelper: NFCHelper?
+    private var loadNFTNFCHelper: NFCHelper?
+    private var signMessageNFCHelper: NFCHelper?
     
     // MARK: - Claim NFT
     func claimNFT(completion: @escaping (Bool, String?) -> Void) {
@@ -79,7 +132,7 @@ class NFCOperationCoordinator: NSObject {
                 // Run blockchain operations on background thread
                 Task.detached {
                     do {
-                        let claimResult = try await self.claimService.executeClaim(
+                        let claimResult = try await self.nftService.executeClaim(
                             tag: tag,
                             session: session,
                             keyIndex: 0x01
@@ -167,7 +220,7 @@ class NFCOperationCoordinator: NSObject {
                             self.transferReadNFCHelper = nil
                         }
                     } catch {
-                        let message = "Error reading chip: \(error.localizedDescription)"
+                        let message = (error as? AppError)?.localizedDescription ?? "Failed to read chip. Please try again."
                         await MainActor.run {
                             session.alertMessage = message
                             session.invalidate(errorMessage: message)
@@ -212,7 +265,7 @@ class NFCOperationCoordinator: NSObject {
                 // Run blockchain operations on background thread
                 Task.detached {
                     do {
-                        _ = try await self.transferService.executeTransfer(
+                        _ = try await self.nftService.executeTransfer(
                             tag: tag,
                             session: session,
                             keyIndex: 0x01,
@@ -260,17 +313,76 @@ class NFCOperationCoordinator: NSObject {
             return
         }
         
-        let session = NFCTagReaderSession(pollingOption: .iso14443, delegate: self, queue: nil)
-        session?.alertMessage = "Hold your iPhone near the chip to sign message"
-        session?.begin()
-        
-        // Store message and completion
-        signMessageData = message
-        signMessageCompletion = completion
+        // Store helper as property to prevent deallocation
+        signMessageNFCHelper = NFCHelper()
+        signMessageNFCHelper?.OnTagEvent = { [weak self] success, tag, session, error in
+            guard let self = self else { return }
+            if success, let tag = tag, let session = session {
+                Task { @MainActor in
+                    session.alertMessage = "Signing message..."
+                }
+                
+                let commandHandler = BlockchainCommandHandler(tag_iso7816: tag, readerSession: session)
+                commandHandler.generateSignature(keyIndex: 0x01, messageDigest: message) { [weak self] success, response, error, session in
+                    guard let self = self else { return }
+                    
+                    if success, let response = response, response.count >= 8 {
+                        let globalCounterData = response.subdata(in: 0..<4)
+                        let keyCounterData = response.subdata(in: 4..<8)
+                        let derSignature = response.subdata(in: 8..<response.count)
+                        
+                        // Convert 4-byte Data to UInt32 (big-endian) with bounds checking
+                        guard globalCounterData.count == 4, keyCounterData.count == 4 else {
+                            DispatchQueue.main.async {
+                                let errorMsg = "Invalid counter data length"
+                                session.invalidate(errorMessage: errorMsg)
+                                completion(false, nil, nil, errorMsg)
+                                self.onSignError?(errorMsg)
+                                self.signMessageNFCHelper = nil
+                            }
+                            return
+                        }
+                        
+                        let globalCounter = globalCounterData.withUnsafeBytes { buffer -> UInt32 in
+                            guard buffer.count >= MemoryLayout<UInt32>.size else {
+                                return 0
+                            }
+                            return buffer.load(as: UInt32.self).bigEndian
+                        }
+                        let keyCounter = keyCounterData.withUnsafeBytes { buffer -> UInt32 in
+                            guard buffer.count >= MemoryLayout<UInt32>.size else {
+                                return 0
+                            }
+                            return buffer.load(as: UInt32.self).bigEndian
+                        }
+                        let derSignatureHex = derSignature.hexEncodedString()
+                        
+                        DispatchQueue.main.async {
+                            session.alertMessage = "Message signed successfully"
+                            session.invalidate()
+                            completion(true, globalCounter, keyCounter, derSignatureHex)
+                            self.onSignSuccess?(globalCounter, keyCounter, derSignatureHex)
+                            self.signMessageNFCHelper = nil
+                        }
+                    } else {
+                        DispatchQueue.main.async {
+                            let errorMsg = error ?? "Failed to generate signature"
+                            session.invalidate(errorMessage: errorMsg)
+                            completion(false, nil, nil, errorMsg)
+                            self.onSignError?(errorMsg)
+                            self.signMessageNFCHelper = nil
+                        }
+                    }
+                }
+            } else {
+                let errorMsg = error ?? "Failed to detect NFC tag"
+                completion(false, nil, nil, errorMsg)
+                self.onSignError?(errorMsg)
+                self.signMessageNFCHelper = nil
+            }
+        }
+        signMessageNFCHelper?.BeginSession()
     }
-    
-    private var signMessageData: Data?
-    private var signMessageCompletion: ((Bool, UInt32?, UInt32?, String?) -> Void)?
     
     // MARK: - Mint NFT
     func mintNFT(completion: @escaping (Bool, String?) -> Void) {
@@ -307,7 +419,7 @@ class NFCOperationCoordinator: NSObject {
                 // Run blockchain operations on background thread
                 Task.detached {
                     do {
-                        let mintResult = try await self.mintService.executeMint(
+                        let mintResult = try await self.nftService.executeMint(
                             tag: tag,
                             session: session,
                             keyIndex: 0x01
@@ -353,238 +465,8 @@ class NFCOperationCoordinator: NSObject {
         transferNFCHelper = nil
         transferReadNFCHelper = nil
         mintNFCHelper = nil
-        loadNFTCompletion = nil
-        signMessageData = nil
-        signMessageCompletion = nil
-    }
-}
-
-// MARK: - NFCTagReaderSessionDelegate
-extension NFCOperationCoordinator: NFCTagReaderSessionDelegate {
-    func tagReaderSessionDidBecomeActive(_ session: NFCTagReaderSession) {
-        Logger.logDebug("Session became active", category: .nfc)
-    }
-    
-    func tagReaderSession(_ session: NFCTagReaderSession, didInvalidateWithError error: Error) {
-        Logger.logDebug("Session invalidated with error: \(error)", category: .nfc)
-        
-        if let nfcError = error as? NFCReaderError {
-            switch nfcError.code {
-            case .readerSessionInvalidationErrorUserCanceled:
-                // User canceled, notify completion
-                if let completion = loadNFTCompletion {
-                    completion(false, "User canceled")
-                    onLoadNFTError?("User canceled")
-                    loadNFTCompletion = nil
-                }
-                if let completion = signMessageCompletion {
-                    completion(false, nil, nil, "User canceled")
-                    onSignError?("User canceled")
-                    signMessageCompletion = nil
-                    signMessageData = nil
-                }
-                return
-            default:
-                break
-            }
-        }
-        
-        // Handle other errors
-        if let completion = loadNFTCompletion {
-            let errorMsg = error.localizedDescription
-            completion(false, errorMsg)
-            onLoadNFTError?(errorMsg)
-            loadNFTCompletion = nil
-        }
-        if let completion = signMessageCompletion {
-            let errorMsg = error.localizedDescription
-            completion(false, nil, nil, errorMsg)
-            onSignError?(errorMsg)
-            signMessageCompletion = nil
-            signMessageData = nil
-        }
-    }
-    
-    func tagReaderSession(_ session: NFCTagReaderSession, didDetect tags: [NFCTag]) {
-        Logger.logDebug("Detected \(tags.count) tags", category: .nfc)
-        
-        guard let firstTag = tags.first else {
-            session.invalidate(errorMessage: "No NFC tag found")
-            return
-        }
-        
-        // Handle load NFT
-        if loadNFTCompletion != nil {
-            Task {
-                await handleLoadNFTTag(tag: firstTag, session: session)
-            }
-            return
-        }
-        
-        // Handle sign message
-        if signMessageCompletion != nil, let messageData = signMessageData {
-            Task {
-                await handleSignMessageTag(tag: firstTag, session: session, messageData: messageData)
-            }
-            return
-        }
-    }
-    
-    // MARK: - Load NFT Handler
-    private func handleLoadNFTTag(tag: NFCTag, session: NFCTagReaderSession) async {
-        guard case .iso7816(let iso7816Tag) = tag else {
-            await MainActor.run {
-                let errorMsg = "Invalid tag type"
-                session.invalidate(errorMessage: errorMsg)
-                loadNFTCompletion?(false, errorMsg)
-                onLoadNFTError?(errorMsg)
-                loadNFTCompletion = nil
-            }
-            return
-        }
-        
-        session.connect(to: tag) { error in
-            if let error = error {
-                Logger.logError("Failed to connect to tag: \(error)", category: .nfc)
-                session.invalidate(errorMessage: "Failed to connect to NFC tag")
-            }
-        }
-        
-        do {
-            // Read NDEF to get contract ID
-            let ndefUrl = try await NDEFReader.readNDEFUrl(tag: iso7816Tag, session: session)
-            guard let ndefUrl = ndefUrl else {
-                throw AppError.nfc(.readWriteFailed("No NDEF URL found"))
-            }
-            
-            guard let contractId = NDEFReader.parseContractIdFromNDEFUrl(ndefUrl) else {
-                throw AppError.validation("Invalid contract ID in NFC tag")
-            }
-            
-            // Read chip public key
-            let chipPublicKey = try await readChipPublicKey(tag: iso7816Tag, session: session, keyIndex: 0x01)
-            guard let publicKeyData = Data(hexString: chipPublicKey) else {
-                throw AppError.crypto(.invalidKey("Invalid public key format from chip"))
-            }
-            
-            // Update session message before blockchain operation
-            await MainActor.run {
-                session.alertMessage = "Reading chip information..."
-            }
-            
-            // Get token ID (this needs to happen while session is active for proper flow)
-            let tokenId = try await getTokenIdForChip(contractId: contractId, publicKey: publicKeyData)
-            
-            // Close NFC session immediately after getting token ID
-            await MainActor.run {
-                session.alertMessage = "Chip information read successfully"
-                session.invalidate()
-            }
-            
-            // Continue on background thread to load NFT
-            await MainActor.run {
-                loadNFTCompletion?(true, nil)
-                loadNFTCompletion = nil
-                // Trigger NFT view presentation
-                onLoadNFTSuccess?(contractId, tokenId)
-            }
-        } catch {
-            await MainActor.run {
-                let errorMessage = (error as? AppError)?.localizedDescription ?? "Failed to load NFT"
-                session.invalidate(errorMessage: errorMessage)
-                loadNFTCompletion?(false, errorMessage)
-                onLoadNFTError?(errorMessage)
-                loadNFTCompletion = nil
-            }
-        }
-    }
-    
-    // MARK: - Sign Message Handler
-    private func handleSignMessageTag(tag: NFCTag, session: NFCTagReaderSession, messageData: Data) async {
-        guard case .iso7816(let iso7816Tag) = tag else {
-            await MainActor.run {
-                session.invalidate(errorMessage: "Invalid tag type")
-                signMessageCompletion?(false, nil, nil, "Invalid tag type")
-                signMessageCompletion = nil
-            }
-            return
-        }
-        
-        session.connect(to: tag) { error in
-            if let error = error {
-                Logger.logError("Failed to connect to tag: \(error)", category: .nfc)
-                session.invalidate(errorMessage: "Failed to connect to NFC tag")
-            }
-        }
-        
-        let commandHandler = BlockchainCommandHandler(tag_iso7816: iso7816Tag, reader_session: session)
-        commandHandler.ActionGenerateSignature(key_index: 0x01, message_digest: messageData) { [weak self] success, response, error, session in
-            guard let self = self else { return }
-            
-            if success, let response = response, response.count >= 8 {
-                guard response.count >= 8 else {
-                    DispatchQueue.main.async {
-                        let errorMsg = "Invalid response length: expected at least 8 bytes, got \(response.count)"
-                        session.invalidate(errorMessage: errorMsg)
-                        self.signMessageCompletion?(false, nil, nil, errorMsg)
-                        self.onSignError?(errorMsg)
-                        self.signMessageCompletion = nil
-                        self.signMessageData = nil
-                    }
-                    return
-                }
-                
-                let globalCounterData = response.subdata(in: 0..<4)
-                let keyCounterData = response.subdata(in: 4..<8)
-                let derSignature = response.subdata(in: 8..<response.count)
-                
-                // Convert 4-byte Data to UInt32 (big-endian) with bounds checking
-                guard globalCounterData.count == 4, keyCounterData.count == 4 else {
-                    DispatchQueue.main.async {
-                        let errorMsg = "Invalid counter data length"
-                        session.invalidate(errorMessage: errorMsg)
-                        self.signMessageCompletion?(false, nil, nil, errorMsg)
-                        self.onSignError?(errorMsg)
-                        self.signMessageCompletion = nil
-                        self.signMessageData = nil
-                    }
-                    return
-                }
-                
-                let globalCounter = globalCounterData.withUnsafeBytes { buffer -> UInt32 in
-                    guard buffer.count >= MemoryLayout<UInt32>.size else {
-                        return 0
-                    }
-                    return buffer.load(as: UInt32.self).bigEndian
-                }
-                let keyCounter = keyCounterData.withUnsafeBytes { buffer -> UInt32 in
-                    guard buffer.count >= MemoryLayout<UInt32>.size else {
-                        return 0
-                    }
-                    return buffer.load(as: UInt32.self).bigEndian
-                }
-                let derSignatureHex = derSignature.hexEncodedString()
-                
-                DispatchQueue.main.async {
-                    session.alertMessage = "Message signed successfully"
-                    session.invalidate()
-                    self.signMessageCompletion?(true, globalCounter, keyCounter, derSignatureHex)
-                    // Trigger callback
-                    self.onSignSuccess?(globalCounter, keyCounter, derSignatureHex)
-                    self.signMessageCompletion = nil
-                    self.signMessageData = nil
-                }
-            } else {
-                DispatchQueue.main.async {
-                    let errorMsg = error ?? "Failed to generate signature"
-                    session.invalidate(errorMessage: errorMsg)
-                    self.signMessageCompletion?(false, nil, nil, errorMsg)
-                    self.onSignError?(errorMsg)
-                    self.signMessageCompletion = nil
-                    self.signMessageData = nil
-                }
-            }
-        }
+        loadNFTNFCHelper = nil
+        signMessageNFCHelper = nil
     }
     
     private func readChipPublicKey(tag: NFCISO7816Tag, session: NFCTagReaderSession, keyIndex: UInt8) async throws -> String {

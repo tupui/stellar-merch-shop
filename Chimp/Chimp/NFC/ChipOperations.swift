@@ -12,8 +12,8 @@ final class ChipOperations {
     /// - Throws: AppError if reading fails
     static func readChipPublicKey(tag: NFCISO7816Tag, session: NFCTagReaderSession, keyIndex: UInt8 = 0x01) async throws -> String {
         return try await withCheckedThrowingContinuation { continuation in
-            let commandHandler = BlockchainCommandHandler(tag_iso7816: tag, reader_session: session)
-            commandHandler.ActionGetKey(key_index: keyIndex) { success, response, error, session in
+            let commandHandler = BlockchainCommandHandler(tag_iso7816: tag, readerSession: session)
+            commandHandler.getKey(keyIndex: keyIndex) { success, response, error, session in
                 if success, let response = response, response.count >= 73 {
                     // Extract public key (skip first 9 bytes: 4 bytes global counter + 4 bytes signature counter + 1 byte 0x04)
                     let publicKeyData = response.subdata(in: 9..<73) // 64 bytes of public key
@@ -43,8 +43,8 @@ final class ChipOperations {
         }
         
         return try await withCheckedThrowingContinuation { continuation in
-            let commandHandler = BlockchainCommandHandler(tag_iso7816: tag, reader_session: session)
-            commandHandler.ActionGenerateSignature(key_index: keyIndex, message_digest: messageHash) { success, response, error, session in
+            let commandHandler = BlockchainCommandHandler(tag_iso7816: tag, readerSession: session)
+            commandHandler.generateSignature(keyIndex: keyIndex, messageDigest: messageHash) { success, response, error, session in
                 if success, let response = response, response.count >= 8 {
                     // Response format: 4 bytes global counter + 4 bytes key counter + DER signature
                     let derSignature = response.subdata(in: 8..<response.count)
