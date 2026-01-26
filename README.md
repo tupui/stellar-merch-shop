@@ -1,4 +1,4 @@
-# Move to https://github.com/Consulting-Manao/chimpdao-contracts and https://github.com/Consulting-Manao/chimpdao-ios
+# Moved to https://github.com/Consulting-Manao/chimpdao-contracts and https://github.com/Consulting-Manao/chimpdao-ios
 
 ## Stellar Merch Shop: Chi(m)p
 
